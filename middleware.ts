@@ -70,14 +70,15 @@ export function middleware(req: NextRequest) {
   const cspHeader = `
     default-src 'self';
     script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.rzp.io https://*.razorpay.com;
-    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com;
     img-src 'self' data: https: blob:;
-    font-src 'self' data: https://fonts.gstatic.com;
+    font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com;
     connect-src 'self' 
       https://api.razorpay.com 
       https://*.razorpay.com
       https://lumberjack.razorpay.com
       https://*.rzp.io
+      https://*.googleapis.com
       https://vercel.live 
       https://*.vercel.app 
       https://bctyvhykgrytmtmubwvt.supabase.co

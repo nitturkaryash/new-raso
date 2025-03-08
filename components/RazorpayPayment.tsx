@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { CreditCard } from 'lucide-react'
 import { type Transaction } from '@/lib/supabase'
+import { toast } from '@/components/ui/use-toast'
 
 interface RazorpayPaymentProps {
   orderData: any
@@ -26,7 +27,11 @@ export default function RazorpayPayment({
 }: RazorpayPaymentProps) {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-
+  
+  // Handle QR code payments - we need to poll for status updates
+  const [isQrPayment, setIsQrPayment] = useState(false)
+  const [qrOrderId, setQrOrderId] = useState('')
+  
   useEffect(() => {
     // Load Razorpay script
     if (typeof window !== 'undefined') {
@@ -48,6 +53,48 @@ export default function RazorpayPayment({
       document.body.appendChild(script)
     }
   }, [])
+  
+  // Handle QR code polling when active
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout | null = null;
+    
+    if (isQrPayment && qrOrderId) {
+      console.log(`Starting polling for QR payment status for order ${qrOrderId}`);
+      
+      // Poll every 5 seconds
+      pollInterval = setInterval(async () => {
+        try {
+          console.log(`Checking payment status for order ${qrOrderId}`);
+          const response = await fetch(`/api/razorpay/check-payment?orderId=${qrOrderId}`);
+          const data = await response.json();
+          
+          console.log('Order status check result:', data);
+          
+          if (data.success && data.payment_status === 'paid') {
+            console.log('QR Payment detected as successful');
+            clearInterval(pollInterval!);
+            setIsQrPayment(false);
+            setQrOrderId('');
+            
+            // Call success handler with the payment data
+            onSuccess({
+              razorpay_payment_id: data.payment_id,
+              razorpay_order_id: qrOrderId,
+              razorpay_signature: 'qr_payment'
+            });
+          }
+        } catch (error) {
+          console.error('Error checking payment status:', error);
+        }
+      }, 5000);
+    }
+    
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [isQrPayment, qrOrderId, onSuccess]);
 
   const handlePayment = () => {
     if (!isLoaded || !orderData) return
@@ -102,17 +149,58 @@ export default function RazorpayPayment({
           ondismiss: function() {
             console.log('Payment modal dismissed')
             setIsProcessing(false)
-            onCancel()
+            
+            // If QR payment was started, don't cancel yet - we'll poll for status
+            if (isQrPayment) {
+              toast({
+                title: "QR Code Payment Initiated",
+                description: "Please complete the payment in your UPI app. This page will update automatically when payment is detected.",
+              });
+            } else {
+              onCancel()
+            }
           }
+        },
+        // QR code payment detection
+        callback_url: `${window.location.origin}/api/razorpay/payment-callback`,
+        _: {
+          integration: 'custom',
+          integration_version: '1.0.0',
+          integration_parent_version: '1.0.0'
         }
       }
       
       console.log('Razorpay options:', options)
       
       const razorpay = new window.Razorpay(options)
+      
+      // Listen for QR code scan events
+      razorpay.on('payment.upi_qrcode_generated', function(response: any) {
+        console.log('UPI QR code generated:', response);
+        setIsQrPayment(true);
+        setQrOrderId(orderId);
+        
+        toast({
+          title: "QR Code Generated",
+          description: "Please scan the QR code with your UPI app to complete payment.",
+        });
+      });
+      
       razorpay.on('payment.failed', function(response: any) {
         console.error('Payment failed:', response.error)
-        setIsProcessing(false)
+        
+        // Only cancel if not a QR payment - for QR we keep polling
+        if (!isQrPayment) {
+          setIsProcessing(false)
+          
+          toast({
+            title: "Payment Failed",
+            description: response.error.description || "Your payment attempt failed. Please try again.",
+            variant: "destructive",
+          });
+          
+          onCancel();
+        }
       })
       
       razorpay.open()
@@ -132,7 +220,7 @@ export default function RazorpayPayment({
       {!isLoaded 
         ? 'Loading Payment...' 
         : isProcessing 
-          ? 'Processing...' 
+          ? isQrPayment ? 'QR Payment Pending...' : 'Processing...' 
           : 'Pay Now'
       }
     </Button>
