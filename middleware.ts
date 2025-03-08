@@ -13,7 +13,9 @@ export function middleware(req: NextRequest) {
     '/login',
     '/api/payment-link',
     '/api/payments/razorpay',
-    '/api/razorpay'
+    '/api/razorpay',
+    '/public',
+    '/payment-success'
   ];
   
   // Check if the current route is in the public routes list
@@ -107,6 +109,8 @@ export const config = {
     '/services/:path*',
     '/invoices/:path*',
     '/transactions/:path*',
+    '/public/:path*',
+    '/payment-success',
     // Match all request paths except for the ones starting with:
     // - api (API routes)
     // - _next/static (static files)

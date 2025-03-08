@@ -333,8 +333,8 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
   const handleShare = async () => {
     if (!transaction) return;
     
-    // Create a shareable link to the invoice page with payment option
-    const shareUrl = `${window.location.origin}/invoice/${transaction.id}`;
+    // Create a shareable link to the public invoice page
+    const shareUrl = `${window.location.origin}/public/invoice/${transaction.id}`;
     setShareUrl(shareUrl);
     
     try {
@@ -352,7 +352,12 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
       }
     } catch (error) {
       console.error("Error sharing:", error);
-      // Fallback to dialog on error
+      toast({
+        title: "Sharing Failed",
+        description: "Could not share the invoice. You can manually copy the link instead.",
+        variant: "destructive",
+      });
+      // Show dialog as fallback
       setShowShareDialog(true);
     }
   };
