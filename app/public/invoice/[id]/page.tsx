@@ -31,20 +31,22 @@ export default function PublicInvoicePage({ params }: { params: { id: string } }
     loadTransaction()
 
     // Load Razorpay script
-    const script = document.createElement("script")
-    script.src = "https://checkout.razorpay.com/v1/checkout.js"
-    script.async = true
-    script.onload = () => {
-      console.log("Razorpay script loaded successfully")
-      setRazorpayLoaded(true)
-    }
-    script.onerror = (error) => {
-      console.error("Failed to load Razorpay script:", error)
-    }
-    document.body.appendChild(script)
+    if (typeof window !== 'undefined') {
+      const script = document.createElement("script")
+      script.src = "https://checkout.razorpay.com/v1/checkout.js"
+      script.async = true
+      script.onload = () => {
+        console.log("Razorpay script loaded successfully")
+        setRazorpayLoaded(true)
+      }
+      script.onerror = (error) => {
+        console.error("Failed to load Razorpay script:", error)
+      }
+      document.body.appendChild(script)
 
-    // Debug: Check if Razorpay key is available
-    console.log("Razorpay key in environment:", process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ? "Available" : "Not available")
+      // Debug: Check if Razorpay key is available
+      console.log("Razorpay key in environment:", process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ? "Available" : "Not available")
+    }
   }, [])
 
   async function loadTransaction() {
