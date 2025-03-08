@@ -67,6 +67,17 @@ export default function Home() {
           </CardFooter>
         </Card>
       </div>
+      
+      <div className="mt-12 p-6 border rounded-lg bg-muted/10">
+        <h2 className="text-xl font-semibold mb-4">Payment Integration</h2>
+        <p className="mb-4">To process payments:</p>
+        <ol className="list-decimal list-inside space-y-2 mb-4">
+          <li>Create a transaction with customer details and services</li>
+          <li>Navigate to the invoice page</li>
+          <li>Click the "Pay Now" button to process payment via Razorpay</li>
+        </ol>
+        <p className="text-sm text-muted-foreground">For test payments, use card number 4111 1111 1111 1111, any future date, any CVV, and OTP 1234.</p>
+      </div>
     </div>
   )
 }

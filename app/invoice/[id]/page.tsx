@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { CreditCard, ArrowRight, Calendar, User, Mail, FileText } from "lucide-react"
+import { CreditCard, ArrowRight, Calendar, User, Mail, FileText, AlertTriangle, Check } from "lucide-react"
 import { getTransaction } from "@/lib/supabase"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -15,6 +15,37 @@ declare global {
   }
 }
 
+// Component to display when transaction is not found
+function TransactionNotFound() {
+  const router = useRouter()
+  
+  return (
+    <div className="container mx-auto py-10">
+      <Card className="max-w-3xl mx-auto">
+        <CardHeader>
+          <div className="flex items-center justify-center text-orange-500 mb-4">
+            <AlertTriangle size={48} />
+          </div>
+          <CardTitle className="text-center text-2xl">Transaction Not Found</CardTitle>
+          <CardDescription className="text-center">
+            The requested invoice does not exist or has been deleted.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-center">
+          <p className="mb-6">
+            Please check the invoice ID or contact support if you believe this is an error.
+          </p>
+        </CardContent>
+        <CardFooter className="flex justify-center">
+          <Button onClick={() => router.push('/')}>
+            Go to Home
+          </Button>
+        </CardFooter>
+      </Card>
+    </div>
+  )
+}
+
 export default function InvoicePage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -22,6 +53,8 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [razorpayLoaded, setRazorpayLoaded] = useState(false)
+  const [customAmount, setCustomAmount] = useState<string>('')
+  const [showCustomAmountForm, setShowCustomAmountForm] = useState(false)
 
   useEffect(() => {
     // Declare Razorpay type for TypeScript
@@ -47,6 +80,10 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
     // Debug: Check if Razorpay key is available
     console.log("Razorpay key in environment:", process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ? "Available" : "Not available")
 
+    // Immediately set a default value based on the transaction ID
+    // This is to make the form show something immediately if needed
+    setCustomAmount('100');
+
     return () => {
       if (document.body.contains(script)) {
         document.body.removeChild(script)
@@ -59,9 +96,32 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
       setIsLoading(true)
       const data = await getTransaction(params.id)
       if (!data) {
-        throw new Error('Transaction not found')
+        toast({
+          title: "Invoice not found",
+          description: `The invoice with ID ${params.id} does not exist or has been deleted.`,
+          variant: "destructive",
+        })
+        // Add a NotFound component to display
+        setTransaction(null)
+        return
       }
+      
+      // Log the transaction data for debugging
+      console.log("Transaction loaded:", {
+        id: data.id,
+        invoice_number: data.invoice_number,
+        total_amount: data.total_amount,
+        type: typeof data.total_amount
+      });
+      
+      // Set the transaction data
       setTransaction(data)
+      
+      // When a transaction is found, update the custom amount field to match its total
+      // This ensures that if the user switches to manual entry, they see the correct amount
+      if (data.total_amount) {
+        setCustomAmount(data.total_amount.toString());
+      }
     } catch (error) {
       console.error("Error loading transaction:", error);
       toast({
@@ -74,15 +134,24 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
     }
   }
 
+  // Handle custom amount change
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Only allow numeric input
+    if (/^\d*\.?\d*$/.test(value)) {
+      setCustomAmount(value);
+    }
+  };
+
   const handlePayment = async () => {
     if (!transaction) {
-      toast({
-        title: "Error",
-        description: "Transaction data is missing. Reload the page and try again.",
-        variant: "destructive",
-      });
+      // If no transaction exists, show the custom amount form
+      setShowCustomAmountForm(true);
       return;
     }
+    
+    // Log the exact transaction amount that will be used
+    console.log("Using exact invoice amount for payment:", transaction.total_amount);
     
     if (isProcessingPayment) return;
     
@@ -123,11 +192,17 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
 
     try {
       console.log("Creating order via API for transaction ID:", transaction.id);
-      // Create order via API
+      console.log("Invoice amount:", transaction.total_amount, "Type:", typeof transaction.total_amount);
+      
+      // Create order via API - this will always use the exact amount from the transaction
       const orderResponse = await fetch('/api/razorpay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transactionId: transaction.id }),
+        body: JSON.stringify({ 
+          transactionId: transaction.id,
+          // Include amount here as a backup, but the server should always use the transaction amount
+          amount: transaction.total_amount 
+        }),
       });
       
       if (!orderResponse.ok) {
@@ -160,6 +235,7 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
       }
       
       console.log("Order created successfully:", orderData);
+      console.log("Payment amount in paise:", orderData.amount);
       
       // Add a small delay to ensure Razorpay is fully loaded
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -184,7 +260,7 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
         currency: orderData.currency || "INR",
         order_id: orderData.orderId,
         name: "Your Company Name",
-        description: `Payment for Invoice ${transaction.invoice_number}`,
+        description: `Payment for Invoice ${transaction.invoice_number} - ₹${(orderData.amount/100).toFixed(2)}`,
         image: "https://your-logo-url.com/logo.png", // Replace with your logo
         handler: async function(response: any) {
           console.log("Payment successful:", response);
@@ -222,12 +298,11 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
           // Show success message
           toast({
             title: "Payment Successful",
-            description: "Your payment has been processed successfully",
+            description: `Payment ID: ${response.razorpay_payment_id}`,
           });
           
-          // Reload transaction to update UI
-          loadTransaction();
-          setIsProcessingPayment(false);
+          // Redirect to success page with amount
+          router.push(`/payment-success?paymentId=${response.razorpay_payment_id}&amount=${transaction.total_amount}`);
         },
         prefill: {
           name: transaction.customer_name || "",
@@ -271,6 +346,150 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
     }
   };
 
+  const handleDirectPayment = async () => {
+    if (isProcessingPayment) return;
+    
+    // Validate amount
+    const parsedAmount = parseFloat(customAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast({
+        title: "Invalid Amount",
+        description: "Please enter a valid payment amount greater than zero.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Log the exact amount we're going to use for payment
+    console.log("Using custom amount for direct payment:", parsedAmount);
+    
+    setIsProcessingPayment(true);
+    
+    if (!razorpayLoaded) {
+      toast({
+        title: "Payment System Loading",
+        description: "Please wait while we initialize the payment system...",
+      });
+      
+      // Wait a bit for Razorpay to load
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      if (!razorpayLoaded) {
+        toast({
+          title: "Payment Error",
+          description: "Payment system could not be loaded. Please refresh the page and try again.",
+          variant: "destructive",
+        });
+        setIsProcessingPayment(false);
+        return;
+      }
+    }
+    
+    const razorpayKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+    
+    if (!razorpayKeyId) {
+      console.error("Razorpay Key ID is not configured in environment variables");
+      toast({
+        title: "Configuration Error",
+        description: "Payment system is not properly configured. Please contact support.",
+        variant: "destructive",
+      });
+      setIsProcessingPayment(false);
+      return;
+    }
+
+    try {
+      // Use custom amount for direct payment
+      const amount = parsedAmount;
+      // Calculate total with GST
+      const totalWithGST = Math.round((amount * 1.18) * 100) / 100; // 18% GST
+      
+      console.log(`Creating direct payment order with amount: ${amount} (with GST: ${totalWithGST})`);
+      
+      // Create order via API with direct amount including GST
+      const orderResponse = await fetch('/api/razorpay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          // No transactionId - this is a direct payment
+          // Send the EXACT amount we want to charge
+          amount: totalWithGST, 
+          currency: 'INR',
+          description: `Custom payment of ₹${totalWithGST.toFixed(2)} (includes 18% GST)`,
+          notes: {
+            invoiceId: params.id, // Use invoiceId instead of transactionId for clarity
+            source: 'direct-payment',
+            baseAmount: amount.toString(),
+            gst: '18%',
+            totalWithGST: totalWithGST.toString()
+          }
+        }),
+      });
+      
+      if (!orderResponse.ok) {
+        const errorData = await orderResponse.json();
+        console.error("Order creation failed:", orderResponse.status, errorData);
+        throw new Error(`Failed to create order: ${errorData.error || 'Unknown error'}`);
+      }
+      
+      const orderData = await orderResponse.json();
+      
+      if (!orderData.success || !orderData.orderId) {
+        console.error("Invalid order data received:", orderData);
+        throw new Error("Invalid order data received from server");
+      }
+      
+      console.log("Order created successfully:", orderData);
+      
+      // Configure Razorpay payment options
+      const options = {
+        key: razorpayKeyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "Your Business Name",
+        description: "Custom Amount Payment",
+        order_id: orderData.orderId,
+        handler: function(response: any) {
+          console.log("Payment successful:", response);
+          toast({
+            title: "Payment Successful",
+            description: `Payment ID: ${response.razorpay_payment_id}`,
+          });
+          
+          // Redirect to a success page with the total amount including GST
+          router.push(`/payment-success?paymentId=${response.razorpay_payment_id}&amount=${totalWithGST}`);
+        },
+        prefill: {
+          name: "Customer Name",
+          email: "customer@example.com",
+        },
+        theme: {
+          color: "#4338CA",
+        },
+        modal: {
+          ondismiss: function() {
+            console.log("Payment modal dismissed");
+            setIsProcessingPayment(false);
+          }
+        }
+      };
+      
+      // Open Razorpay payment form
+      const razorpayInstance = new window.Razorpay(options);
+      razorpayInstance.open();
+      
+    } catch (error) {
+      console.error("Error in handleDirectPayment:", error);
+      toast({
+        title: "Payment Error",
+        description: error instanceof Error ? error.message : "Failed to initialize payment",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
   const handleViewFullInvoice = () => {
     router.push(`/transactions/${params.id}/invoice`);
   };
@@ -279,8 +498,81 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
     return <div className="container mx-auto py-10 px-4 text-center">Loading invoice details...</div>;
   }
 
-  if (!transaction) {
-    return <div className="container mx-auto py-10 px-4 text-center">Invoice not found</div>;
+  if (!transaction && !isLoading) {
+    return (
+      <div className="container mx-auto py-10">
+        <Card className="max-w-3xl mx-auto">
+          <CardHeader>
+            <div className="flex items-center justify-center text-orange-500 mb-4">
+              <AlertTriangle size={48} />
+            </div>
+            <CardTitle className="text-center text-2xl">Invoice Not Found</CardTitle>
+            <CardDescription className="text-center">
+              The requested invoice with ID {params.id} does not exist or has been deleted.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center">
+            {showCustomAmountForm ? (
+              <div className="space-y-4 border rounded-lg p-6 bg-muted/20 max-w-md mx-auto">
+                <h3 className="font-semibold text-lg">Enter Payment Amount</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Since the invoice doesn't exist, you can enter a custom amount to pay.
+                </p>
+                <div className="flex items-center space-x-2">
+                  <span className="text-lg font-medium">₹</span>
+                  <input 
+                    type="text"
+                    value={customAmount}
+                    onChange={handleAmountChange}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    placeholder="Enter amount"
+                  />
+                </div>
+                
+                <div className="text-sm text-muted-foreground mt-2 text-left">
+                  <p>Amount breakdown:</p>
+                  <div className="border-t mt-2 pt-2">
+                    <p className="flex justify-between"><span>Subtotal:</span> <span>₹{parseFloat(customAmount || '0').toFixed(2)}</span></p>
+                    <p className="flex justify-between"><span>GST (18%):</span> <span>₹{(parseFloat(customAmount || '0') * 0.18).toFixed(2)}</span></p>
+                    <p className="flex justify-between font-semibold border-t mt-1 pt-1"><span>Total:</span> <span>₹{(parseFloat(customAmount || '0') * 1.18).toFixed(2)}</span></p>
+                  </div>
+                </div>
+                
+                <Button 
+                  onClick={handleDirectPayment}
+                  disabled={isProcessingPayment || !customAmount || parseFloat(customAmount) <= 0}
+                  className="w-full mt-4"
+                >
+                  <CreditCard className="mr-2 h-5 w-5" />
+                  {isProcessingPayment ? "Processing..." : `Pay Now (₹${(parseFloat(customAmount || '0') * 1.18).toFixed(2)})`}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowCustomAmountForm(false)}
+                  className="w-full mt-2"
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <p className="mb-6">
+                  Please check the invoice ID or contact support if you believe this is an error.
+                </p>
+                <div className="flex justify-center gap-4">
+                  <Button onClick={() => router.push('/')} variant="outline">
+                    Go Home
+                  </Button>
+                  <Button onClick={() => setShowCustomAmountForm(true)}>
+                    Make Payment Anyway
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
@@ -370,21 +662,21 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
               disabled={isProcessingPayment}
             >
               <CreditCard className="mr-2 h-5 w-5" />
-              {isProcessingPayment ? "Processing Payment..." : "Pay Now"}
+              {isProcessingPayment ? "Processing Payment..." : `Pay Now (₹${transaction.total_amount.toFixed(2)})`}
             </Button>
           ) : (
-            <div className="bg-green-50 text-green-700 p-4 rounded-md w-full text-center">
-              <h3 className="font-bold text-lg">Payment Completed</h3>
-              <p className="text-sm mt-1">Thank you for your payment!</p>
-              {transaction.payment_id && (
-                <p className="text-xs mt-2">Payment ID: {transaction.payment_id}</p>
-              )}
+            <div className="w-full bg-green-100 text-green-800 rounded-md p-4 text-center flex items-center justify-center">
+              <Check className="mr-2 h-5 w-5" />
+              <span>Payment Completed</span>
             </div>
           )}
           
-          <Button variant="outline" onClick={handleViewFullInvoice} className="w-full">
-            View Full Invoice <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={handleViewFullInvoice}>
+              <FileText className="mr-2 h-4 w-4" />
+              View Full Invoice
+            </Button>
+          </div>
         </CardFooter>
       </Card>
     </div>

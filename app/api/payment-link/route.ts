@@ -31,7 +31,14 @@ export async function POST(request: Request) {
       console.log("Retrieved transaction data:", transaction);
       
       if (!transaction) {
-        throw new Error(`Transaction with ID ${transactionId} not found`);
+        const errorMessage = `Transaction with ID ${transactionId} not found`;
+        console.error(errorMessage);
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Failed to retrieve transaction data',
+          message: errorMessage,
+          details: `The transaction with ID ${transactionId} does not exist in the database. Please ensure the transaction has been created first.`
+        }, { status: 404 });
       }
     } catch (error) {
       console.error("Error fetching transaction:", error);

@@ -204,29 +204,38 @@ export type Transaction = {
 // Service functions
 export async function getServices() {
   try {
-    console.log('Fetching services from Supabase...');
+    console.log('Fetching services');
     
     if (!supabase) {
       console.error('Supabase client is not available');
       return [];
     }
     
-    // Get services from Supabase
-    const { data, error } = await supabase
-      .from('services')
-      .select('*')
-      .order('name');
-    
-    if (error) {
-      console.error('Error fetching services from Supabase:', error);
-      console.error('Error code:', error.code);
-      console.error('Error details:', error.details);
-      console.error('Error message:', error.message);
+    // Check auth status first
+    const { data: authData, error: authError } = await supabase.auth.getSession();
+    if (authError) {
+      console.error('Error checking auth status:', authError);
       return [];
     }
     
-    console.log(`Found ${data.length} services in Supabase`);
-    return data;
+    // If no session, try to sign in anonymously to get a token
+    if (!authData?.session) {
+      console.log('No active session, signing in anonymously');
+      await checkAuth();
+    }
+    
+    // Get services list
+    const { data, error } = await supabase
+      .from('services')
+      .select('*')
+      .order('name', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching services:', error);
+      return [];
+    }
+    
+    return data || [];
   } catch (e) {
     console.error('Exception in getServices:', e);
     return [];
@@ -267,61 +276,72 @@ export async function getService(id: string) {
 
 export async function createService(service: Omit<Service, "id" | "created_at">) {
   try {
-    console.log('Creating service with data:', JSON.stringify(service, null, 2));
+    console.log('Creating service:', service);
     
     if (!supabase) {
       console.error('Supabase client is not available');
       return null;
     }
     
-    // Check authentication
+    // Check auth status
     const { data: authData, error: authError } = await supabase.auth.getSession();
-    
     if (authError) {
-      console.error('Authentication error before creating service:', authError);
+      console.error('Error checking auth status:', authError);
       return null;
     }
     
-    if (!authData.session) {
-      console.error('No session found before creating service. Trying to sign in anonymously.');
+    const userId = authData?.session?.user?.id;
+    if (!userId) {
+      console.error('No authenticated user found');
       
-      const { error: signInError } = await supabase.auth.signInAnonymously();
+      // Try to sign in anonymously to get a user ID
+      const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously();
       if (signInError) {
         console.error('Failed to sign in anonymously:', signInError);
         return null;
       }
+      
+      // If anonymous sign-in succeeds, use that user ID
+      const anonymousUserId = signInData?.user?.id;
+      if (!anonymousUserId) {
+        console.error('Could not get anonymous user ID');
+        return null;
+      }
+      
+      // Insert service with the user ID from anonymous sign-in
+      const { data, error } = await supabase
+        .from('services')
+        .insert({
+          ...service,
+          user_id: anonymousUserId
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('Error creating service:', error);
+        return null;
+      }
+      
+      return data;
     }
     
-    // Ensure all required fields are present
-    const serviceData = {
-      name: service.name || 'Unnamed Service',
-      description: service.description || '',
-      price: typeof service.price === 'number' ? service.price : parseFloat(service.price as any) || 0,
-      active: service.active !== undefined ? service.active : true,
-      hsn_code: service.hsn_code || '998311', // Default HSN code
-      gst_rate: typeof service.gst_rate === 'number' ? service.gst_rate : parseFloat(service.gst_rate as any) || 18,
-    };
-    
-    console.log('Normalized service data:', JSON.stringify(serviceData, null, 2));
-    
-    // Insert the service into Supabase
+    // Insert service with authenticated user ID
     const { data, error } = await supabase
       .from('services')
-      .insert([serviceData])
+      .insert({
+        ...service,
+        user_id: userId
+      })
       .select()
       .single();
     
     if (error) {
-      console.error('Error creating service in Supabase:', error);
-      console.error('Error code:', error.code);
-      console.error('Error details:', error.details);
-      console.error('Error hint:', error.hint);
-      console.error('Error message:', error.message);
+      console.error('Error creating service:', error);
       return null;
     }
     
-    console.log('Service created successfully in Supabase:', data);
-    return data as Service;
+    return data;
   } catch (e) {
     console.error('Exception in createService:', e);
     return null;
@@ -423,20 +443,38 @@ export async function getTransaction(id: string) {
       return null;
     }
     
+    // Check auth status
+    const { data: authData, error: authError } = await supabase.auth.getSession();
+    if (authError) {
+      console.error('Error checking auth status:', authError);
+      return null;
+    }
+    
+    // If no session, try to sign in anonymously to get a token for RLS
+    if (!authData?.session) {
+      console.log('No active session, signing in anonymously for transaction fetch');
+      await checkAuth();
+    }
+    
     // Get transaction from Supabase
-    const { data: transaction, error: transactionError } = await supabase
+    const { data: transactions, error: transactionError } = await supabase
       .from('transactions')
       .select('*')
-      .eq('id', id)
-      .single();
+      .eq('id', id);
     
     if (transactionError) {
       console.error('Error fetching transaction:', transactionError);
-      console.error('Error code:', transactionError.code);
-      console.error('Error details:', transactionError.details);
-      console.error('Error message:', transactionError.message);
       return null;
     }
+    
+    // Check if transaction was found
+    if (!transactions || transactions.length === 0) {
+      console.error(`No transaction found with ID: ${id}`);
+      return null;
+    }
+    
+    // Get the single transaction
+    const transaction = transactions[0];
     
     // Get transaction items
     const { data: items, error: itemsError } = await supabase
@@ -446,9 +484,14 @@ export async function getTransaction(id: string) {
     
     if (itemsError) {
       console.error('Error fetching transaction items:', itemsError);
-      return null;
+      // Return the transaction even if items could not be fetched
+      return {
+        ...transaction,
+        items: []
+      } as Transaction;
     }
     
+    // Return the transaction with its items
     return {
       ...transaction,
       items: items || []
@@ -461,84 +504,122 @@ export async function getTransaction(id: string) {
 
 export async function createTransaction(transaction: Omit<Transaction, "id" | "created_at">) {
   try {
-    console.log('Creating transaction with data:', JSON.stringify(transaction, null, 2));
+    console.log('Creating transaction with data:', transaction);
     
     if (!supabase) {
       console.error('Supabase client is not available');
       return null;
     }
     
-    // Check authentication
+    // Check auth status
     const { data: authData, error: authError } = await supabase.auth.getSession();
-    
     if (authError) {
-      console.error('Authentication error before creating transaction:', authError);
+      console.error('Error checking auth status:', authError);
       return null;
     }
     
-    if (!authData.session) {
-      console.error('No session found before creating transaction. Trying to sign in anonymously.');
+    const userId = authData?.session?.user?.id;
+    if (!userId) {
+      console.error('No authenticated user found');
       
-      const { error: signInError } = await supabase.auth.signInAnonymously();
+      // Try to sign in anonymously to get a user ID
+      const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously();
       if (signInError) {
         console.error('Failed to sign in anonymously:', signInError);
         return null;
       }
+      
+      // If anonymous sign-in succeeds, use that user ID
+      const anonymousUserId = signInData?.user?.id;
+      if (!anonymousUserId) {
+        console.error('Could not get anonymous user ID');
+        return null;
+      }
+      
+      // Create the transaction
+      const { items, ...transactionData } = transaction;
+      
+      // Insert transaction with the anonymous user ID
+      const { data: insertedTransaction, error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          ...transactionData,
+          user_id: anonymousUserId
+        })
+        .select()
+        .single();
+      
+      if (transactionError) {
+        console.error('Error creating transaction:', transactionError);
+        return null;
+      }
+      
+      const transactionId = insertedTransaction.id;
+      
+      // Insert transaction items
+      const transactionItems = items.map(item => ({
+        ...item,
+        transaction_id: transactionId
+      }));
+      
+      const { error: itemsError } = await supabase
+        .from('transaction_items')
+        .insert(transactionItems);
+      
+      if (itemsError) {
+        console.error('Error creating transaction items:', itemsError);
+        // If inserting items fails, try to delete the transaction
+        await supabase.from('transactions').delete().eq('id', transactionId);
+        return null;
+      }
+      
+      return {
+        ...insertedTransaction,
+        items
+      };
     }
     
-    // Start a transaction
-    const { data: transactionData, error: transactionError } = await supabase
+    // Create the transaction with authenticated user ID
+    const { items, ...transactionData } = transaction;
+    
+    // Insert transaction
+    const { data: insertedTransaction, error: transactionError } = await supabase
       .from('transactions')
-      .insert([{
-        customer_name: transaction.customer_name,
-        customer_email: transaction.customer_email,
-        customer_gstin: transaction.customer_gstin,
-        customer_address: transaction.customer_address,
-        invoice_number: transaction.invoice_number,
-        invoice_date: transaction.invoice_date,
-        subtotal: transaction.subtotal,
-        discount_type: transaction.discount_type,
-        discount_value: transaction.discount_value,
-        discount_amount: transaction.discount_amount,
-        taxable_amount: transaction.taxable_amount,
-        cgst_amount: transaction.cgst_amount,
-        sgst_amount: transaction.sgst_amount,
-        total_amount: transaction.total_amount,
-        payment_status: transaction.payment_status
-      }])
+      .insert({
+        ...transactionData,
+        user_id: userId
+      })
       .select()
       .single();
     
     if (transactionError) {
       console.error('Error creating transaction:', transactionError);
-      console.error('Error code:', transactionError.code);
-      console.error('Error details:', transactionError.details);
-      console.error('Error message:', transactionError.message);
       return null;
     }
     
-    // Insert items
-    if (transaction.items && transaction.items.length > 0) {
-      const items = transaction.items.map(item => ({
-        ...item,
-        transaction_id: transactionData.id
-      }));
-      
-      const { error: itemsError } = await supabase
-        .from('transaction_items')
-        .insert(items);
-      
-      if (itemsError) {
-        console.error('Error creating transaction items:', itemsError);
-        // Consider rolling back the transaction here
-        return null;
-      }
+    const transactionId = insertedTransaction.id;
+    
+    // Insert transaction items
+    const transactionItems = items.map(item => ({
+      ...item,
+      transaction_id: transactionId
+    }));
+    
+    const { error: itemsError } = await supabase
+      .from('transaction_items')
+      .insert(transactionItems);
+    
+    if (itemsError) {
+      console.error('Error creating transaction items:', itemsError);
+      // If inserting items fails, try to delete the transaction
+      await supabase.from('transactions').delete().eq('id', transactionId);
+      return null;
     }
     
     return {
-      ...transactionData,
-      items: transaction.items
-    } as Transaction;
+      ...insertedTransaction,
+      items
+    };
   } catch (e) {
     console.error('Exception in createTransaction:', e);
     return null;
