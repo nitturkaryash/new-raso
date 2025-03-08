@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Check, ArrowLeft, Printer, Download, Share } from 'lucide-react'
 
-export default function PaymentSuccessPage() {
+// Client component that uses the search params
+function PaymentDetails() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [paymentId, setPaymentId] = useState<string | null>(null)
@@ -143,5 +144,75 @@ export default function PaymentSuccessPage() {
         </CardFooter>
       </Card>
     </div>
+  )
+}
+
+// Loading fallback component
+function PaymentDetailsLoading() {
+  return (
+    <div className="container mx-auto py-10">
+      <Card className="max-w-3xl mx-auto">
+        <CardHeader>
+          <div className="flex items-center justify-center mb-4">
+            <div className="bg-gray-100 p-3 rounded-full animate-pulse">
+              <div className="w-12 h-12 rounded-full bg-gray-200"></div>
+            </div>
+          </div>
+          <CardTitle className="text-center text-2xl">
+            <div className="h-8 bg-gray-200 rounded w-3/4 mx-auto animate-pulse"></div>
+          </CardTitle>
+          <CardDescription className="text-center">
+            <div className="h-4 bg-gray-200 rounded w-2/4 mx-auto mt-2 animate-pulse"></div>
+          </CardDescription>
+        </CardHeader>
+        
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-gray-50 p-4 rounded-md animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+              <div className="h-6 bg-gray-200 rounded w-full"></div>
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-md animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+              <div className="h-6 bg-gray-200 rounded w-1/2"></div>
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-md animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+              <div className="h-6 bg-gray-200 rounded w-full"></div>
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-md animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+              <div className="h-6 bg-gray-200 rounded w-1/3"></div>
+            </div>
+          </div>
+          
+          <div className="text-center space-y-2 p-4 border rounded-md bg-gray-50">
+            <div className="h-4 bg-gray-200 rounded w-full mx-auto animate-pulse"></div>
+            <div className="h-4 bg-gray-200 rounded w-5/6 mx-auto animate-pulse"></div>
+          </div>
+          
+          <div className="flex flex-wrap justify-center gap-4 pt-2">
+            <div className="h-10 bg-gray-200 rounded w-36 animate-pulse"></div>
+            <div className="h-10 bg-gray-200 rounded w-36 animate-pulse"></div>
+          </div>
+        </CardContent>
+        
+        <CardFooter className="flex flex-wrap justify-center gap-4 pt-6 border-t">
+          <div className="h-10 bg-gray-200 rounded w-40 animate-pulse"></div>
+          <div className="h-10 bg-gray-200 rounded w-40 animate-pulse"></div>
+        </CardFooter>
+      </Card>
+    </div>
+  )
+}
+
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense fallback={<PaymentDetailsLoading />}>
+      <PaymentDetails />
+    </Suspense>
   )
 } 
