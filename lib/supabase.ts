@@ -195,7 +195,7 @@ export type Transaction = {
   cgst_amount: number
   sgst_amount: number
   total_amount: number
-  payment_status: "pending" | "paid"
+  payment_status: "pending" | "paid" | "successful" | "waiting"
   payment_id?: string
   items: TransactionItem[]
   created_at?: string
@@ -442,21 +442,54 @@ export async function getTransaction(id: string) {
       console.error('Supabase client is not available');
       return null;
     }
-    
-    // Check auth status
-    const { data: authData, error: authError } = await supabase.auth.getSession();
-    if (authError) {
-      console.error('Error checking auth status:', authError);
-      return null;
+
+    // Always ensure we have an anonymous session for public invoice access
+    // This is critical for shared links to work properly
+    let session = null;
+    try {
+      const { data: authData } = await supabase.auth.getSession();
+      session = authData?.session;
+      
+      if (!session) {
+        console.log('No active session, signing in anonymously for public invoice access');
+        const { data: signInData } = await supabase.auth.signInAnonymously();
+        if (signInData?.session) {
+          console.log('Anonymous sign-in successful for shared invoice access');
+          session = signInData.session;
+        }
+      }
+    } catch (authError) {
+      console.warn('Auth error, proceeding with unauthenticated access:', authError);
+      // Continue without authentication - we'll try to get the invoice anyway
     }
     
-    // If no session, try to sign in anonymously to get a token for RLS
-    if (!authData?.session) {
-      console.log('No active session, signing in anonymously for transaction fetch');
-      await checkAuth();
+    // Try service function with RPC to bypass RLS
+    // Using RPC first which should be configured to allow public access to invoices
+    try {
+      console.log('Attempting to fetch transaction with public RPC function');
+      const { data, error } = await supabase
+        .rpc('get_public_transaction', { transaction_id: id });
+        
+      if (!error && data) {
+        console.log('Successfully retrieved transaction via public RPC');
+        // Get transaction items
+        const { data: items, error: itemsError } = await supabase
+          .from('transaction_items')
+          .select('*')
+          .eq('transaction_id', id);
+        
+        return {
+          ...data,
+          items: itemsError ? [] : (items || [])
+        } as Transaction;
+      }
+    } catch (rpcError) {
+      console.warn('Public RPC function failed or not available:', rpcError);
+      // Fall back to standard query
     }
     
-    // Get transaction from Supabase
+    // Standard query as fallback - may be subject to RLS
+    console.log('Falling back to standard transaction query');
     const { data: transactions, error: transactionError } = await supabase
       .from('transactions')
       .select('*')
@@ -646,7 +679,7 @@ export async function updateTransactionPayment(id: string, paymentId: string) {
   const { data, error } = await supabase
     .from('transactions')
     .update({ 
-      payment_status: 'paid',
+      payment_status: 'successful',
       payment_id: paymentId
     })
     .eq('id', id)

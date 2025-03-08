@@ -95,8 +95,26 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
   async function loadTransaction() {
     try {
       setIsLoading(true)
-      const data = await getTransaction(params.id)
+      
+      console.log(`Attempting to load transaction with ID: ${params.id}`)
+      
+      // First attempt
+      let data = await getTransaction(params.id)
+      
+      // If the first attempt fails, try one more time with a delay
+      // This helps with race conditions in authentication
       if (!data) {
+        console.log("First attempt to load transaction failed, retrying...")
+        
+        // Wait a bit for any auth processes to complete
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        // Try again
+        data = await getTransaction(params.id)
+      }
+      
+      if (!data) {
+        console.log(`Transaction not found after retry: ${params.id}`)
         toast({
           title: "Invoice not found",
           description: `The invoice with ID ${params.id} does not exist or has been deleted.`,
@@ -111,7 +129,7 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
       }
       
       // Log the transaction data for debugging
-      console.log("Transaction loaded:", {
+      console.log("Transaction loaded successfully:", {
         id: data.id,
         invoice_number: data.invoice_number,
         total_amount: data.total_amount,

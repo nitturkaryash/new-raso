@@ -98,6 +98,16 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
   const handlePayment = async () => {
     if (!transaction) return
 
+    // Check if the amount is too small for Razorpay (minimum 1 INR)
+    if (transaction.total_amount < 1) {
+      toast({
+        title: "Amount Too Small",
+        description: "The invoice amount is too small for online payment (minimum ₹1). Please collect payment manually or use a payment link.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsProcessingPayment(true)
     console.log("Payment process started")
 
@@ -158,11 +168,23 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
       if (!orderResponse.ok) {
         console.error("Order creation failed:", orderResponse.status, orderData);
         
-        toast({
-          title: "Payment Initialization Failed",
-          description: orderData.error || "Could not initialize payment. Please try again later.",
-          variant: "destructive",
-        });
+        // Special handling for amount too small error
+        if (orderData.error === 'Amount too small') {
+          toast({
+            title: "Amount Too Small for Direct Payment",
+            description: orderData.details || "The amount is too small for direct payment. Please use the payment link option instead.",
+            variant: "destructive",
+          });
+          
+          // Automatically trigger payment link generation
+          handleGeneratePaymentLink();
+        } else {
+          toast({
+            title: "Payment Initialization Failed",
+            description: orderData.error || "Could not initialize payment. Please try again later.",
+            variant: "destructive",
+          });
+        }
         
         setIsProcessingPayment(false);
         return;
@@ -229,12 +251,17 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
           try {
             console.log("Payment successful:", response)
             // Update transaction payment status
-            await updateTransactionPayment(transaction.id!, response.razorpay_payment_id)
+            const updatedTransaction = await updateTransactionPayment(transaction.id!, response.razorpay_payment_id)
 
             toast({
               title: "Payment Successful",
               description: "Your payment has been processed successfully",
             })
+
+            // Set a flag to refresh transactions list when user navigates back
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('refreshTransactions', 'true');
+            }
 
             // Reload transaction to update UI
             loadTransaction()
@@ -359,6 +386,16 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
       return;
     }
     
+    // Check if the amount is too small for Razorpay (minimum 1 INR)
+    if (transaction.total_amount < 1) {
+      toast({
+        title: "Amount Too Small",
+        description: "The invoice amount is too small for online payment (minimum ₹1). Please collect payment manually.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     try {
       setIsGeneratingLink(true)
       const result = await createPaymentLink({
@@ -379,11 +416,23 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
       });
     } catch (error) {
       console.error('Error generating payment link:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to generate payment link",
-        variant: "destructive",
-      });
+      
+      // Check if it's an amount too small error
+      const errorMessage = error instanceof Error ? error.message : "Failed to generate payment link";
+      if (errorMessage.includes('Amount too small') || 
+          (typeof error === 'object' && error !== null && 'error' in error && error.error === 'Amount too small')) {
+        toast({
+          title: "Amount Too Small",
+          description: "The invoice amount is too small for online payment. Please collect payment manually.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsGeneratingLink(false);
     }

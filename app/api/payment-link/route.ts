@@ -67,6 +67,16 @@ export async function POST(request: Request) {
           // Convert amount to paise (Razorpay expects amount in paise)
           const amountInPaise = Math.round(transaction.total_amount * 100);
           
+          // Check if amount meets Razorpay's minimum requirement (1 INR = 100 paise)
+          if (amountInPaise < 100) {
+            console.error('Amount too small for Razorpay:', amountInPaise, 'paise');
+            return NextResponse.json({ 
+              success: false, 
+              error: 'Amount too small', 
+              details: 'Razorpay requires a minimum amount of ₹1 (100 paise). The current amount is ₹' + (amountInPaise/100).toFixed(2)
+            }, { status: 400 });
+          }
+          
           console.log('Creating payment link with transaction data:', {
             amount: amountInPaise,
             currency: "INR",
@@ -98,7 +108,7 @@ export async function POST(request: Request) {
               transaction_id: transaction.id,
               invoice_number: transaction.invoice_number
             },
-            callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/transactions/${transaction.id}/invoice`,
+            callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/payment-success?fallbackUrl=${encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL}/transactions/${transaction.id}/invoice`)}&transaction_id=${transaction.id}`,
             callback_method: "get",
             expire_by: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // Link expires in 7 days
             reference_id: transaction.invoice_number
@@ -161,6 +171,16 @@ export async function POST(request: Request) {
         if (isNaN(amountInPaise) || amountInPaise <= 0) {
           throw new Error('Invalid amount');
         }
+        
+        // Check if amount meets Razorpay's minimum requirement (1 INR = 100 paise)
+        if (amountInPaise < 100) {
+          console.error('Amount too small for Razorpay:', amountInPaise, 'paise');
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Amount too small', 
+            details: 'Razorpay requires a minimum amount of ₹1 (100 paise). The current amount is ₹' + (amountInPaise/100).toFixed(2)
+          }, { status: 400 });
+        }
       } catch (error) {
         return NextResponse.json(
           { success: false, error: 'Invalid amount', details: 'Amount must be a positive number' },
@@ -194,7 +214,7 @@ export async function POST(request: Request) {
             source: 'direct-payment',
             transaction_id: transactionId || 'none'
           },
-          callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/payment-success`,
+          callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/payment-success?fallbackUrl=${encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL}/`)}${transactionId ? `&transaction_id=${transactionId}` : ''}`,
           callback_method: "get",
           expire_by: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // Link expires in 7 days
           reference_id: reference

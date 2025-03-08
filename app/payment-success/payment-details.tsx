@@ -12,12 +12,21 @@ export default function PaymentDetails() {
   const [paymentId, setPaymentId] = useState<string | null>(null)
   const [amount, setAmount] = useState<string | null>(null)
   const [date, setDate] = useState<string>('')
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null)
+  const [transactionId, setTransactionId] = useState<string | null>(null)
+  const [isUpdatingPayment, setIsUpdatingPayment] = useState<boolean>(false)
+  const [updateError, setUpdateError] = useState<string | null>(null)
   
   useEffect(() => {
-    // Get the payment ID and amount from the URL
+    // Get the payment ID, amount, and fallback URL from the URL
     const id = searchParams?.get('paymentId')
     const amtParam = searchParams?.get('amount')
+    const fbUrl = searchParams?.get('fallbackUrl')
+    const txnId = searchParams?.get('transaction_id') || extractTransactionIdFromUrl(fbUrl)
+    
     setPaymentId(id)
+    setFallbackUrl(fbUrl)
+    setTransactionId(txnId)
     
     // Parse amount correctly - ensure it's a number with 2 decimal places
     if (amtParam) {
@@ -39,7 +48,64 @@ export default function PaymentDetails() {
     // Set current date/time
     const now = new Date()
     setDate(now.toLocaleString())
+    
+    // Update payment status if we have both transaction ID and payment ID
+    if (id && txnId) {
+      updatePaymentStatus(txnId, id);
+    }
   }, [searchParams])
+  
+  // Helper function to extract transaction ID from fallback URL
+  const extractTransactionIdFromUrl = (url: string | null): string | null => {
+    if (!url) return null;
+    
+    try {
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split('/');
+      const transactionsIndex = pathParts.findIndex(part => part === 'transactions');
+      
+      if (transactionsIndex !== -1 && transactionsIndex < pathParts.length - 1) {
+        return pathParts[transactionsIndex + 1];
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error extracting transaction ID from URL:', error);
+      return null;
+    }
+  }
+  
+  // Function to update payment status
+  const updatePaymentStatus = async (txnId: string, pymtId: string) => {
+    setIsUpdatingPayment(true);
+    setUpdateError(null);
+    
+    try {
+      const response = await fetch('/api/transactions/update-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transactionId: txnId,
+          paymentId: pymtId
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update payment status');
+      }
+      
+      console.log('Payment status updated successfully');
+    } catch (error) {
+      console.error('Error updating payment status:', error);
+      setUpdateError(error instanceof Error ? error.message : 'Failed to update payment status');
+    } finally {
+      setIsUpdatingPayment(false);
+    }
+  };
   
   const handlePrint = () => {
     window.print()
@@ -60,6 +126,15 @@ export default function PaymentDetails() {
       // Fallback for browsers that don't support sharing
       navigator.clipboard.writeText(window.location.href)
       alert('Link copied to clipboard!')
+    }
+  }
+  
+  // Function to navigate back to transactions with refresh flag
+  const handleReturnToTransactions = () => {
+    // Set a flag in sessionStorage to indicate that transactions should be refreshed
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('refreshTransactions', 'true');
+      router.push('/transactions');
     }
   }
   
@@ -102,10 +177,18 @@ export default function PaymentDetails() {
             <div className="bg-gray-50 p-4 rounded-md">
               <p className="text-gray-500 text-sm mb-1">Payment Status</p>
               <p className="font-medium text-green-600 flex items-center">
-                <Check className="mr-1 h-4 w-4" /> Completed
+                <Check className="mr-1 h-4 w-4" /> 
+                {isUpdatingPayment ? 'Updating...' : updateError ? 'Completed (Update Failed)' : 'Successful'}
               </p>
             </div>
           </div>
+          
+          {updateError && (
+            <div className="text-center p-4 border rounded-md bg-red-50 text-red-600">
+              <p>There was an issue updating the transaction status: {updateError}</p>
+              <p className="text-sm mt-1">Your payment was successful, but the transaction record may need to be updated manually.</p>
+            </div>
+          )}
           
           <div className="text-center space-y-2 p-4 border rounded-md bg-primary/5">
             <p>Thank you for your payment. A confirmation email with your receipt has been sent to your email address.</p>
@@ -126,17 +209,28 @@ export default function PaymentDetails() {
         </CardContent>
         
         <CardFooter className="flex flex-wrap justify-center gap-4 pt-6 border-t">
-          <Button 
-            variant="outline" 
-            onClick={() => router.push('/')}
-            className="flex items-center"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Return to Home
-          </Button>
+          {fallbackUrl ? (
+            <Button 
+              variant="outline" 
+              onClick={() => window.location.href = fallbackUrl}
+              className="flex items-center"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Return to Merchant
+            </Button>
+          ) : (
+            <Button 
+              variant="outline" 
+              onClick={() => router.push('/')}
+              className="flex items-center"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Return to Home
+            </Button>
+          )}
           
           <Button 
-            onClick={() => router.push('/transactions')}
+            onClick={handleReturnToTransactions}
           >
             View All Transactions
           </Button>

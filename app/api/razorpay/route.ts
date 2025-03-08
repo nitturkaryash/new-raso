@@ -47,6 +47,19 @@ export async function POST(request: Request) {
         if (isNaN(amount) || amount <= 0) {
           throw new Error('Invalid amount');
         }
+        
+        // Check if amount meets Razorpay's minimum requirement (1 INR = 100 paise)
+        if (amount < 100) {
+          console.error('Amount too small for Razorpay:', amount, 'paise');
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'Amount too small', 
+              details: 'Razorpay requires a minimum amount of ₹1 (100 paise). The current amount is ₹' + (amount/100).toFixed(2)
+            },
+            { status: 400 }
+          );
+        }
       } catch (error) {
         return NextResponse.json(
           { success: false, error: 'Invalid amount provided', details: 'Amount must be a positive number' },
@@ -185,6 +198,20 @@ export async function POST(request: Request) {
             throw new Error('Invalid amount');
           }
           console.log(`Valid amount found in request: ${customAmount}`);
+          
+          // Check if amount meets Razorpay's minimum requirement (1 INR = 100 paise)
+          const amountInPaise = Math.round(customAmount * 100);
+          if (amountInPaise < 100) {
+            console.error('Amount too small for Razorpay:', amountInPaise, 'paise');
+            return NextResponse.json(
+              { 
+                success: false, 
+                error: 'Amount too small', 
+                details: 'Razorpay requires a minimum amount of ₹1 (100 paise). The current amount is ₹' + (amountInPaise/100).toFixed(2)
+              },
+              { status: 400 }
+            );
+          }
         } catch (error) {
           console.error("Invalid amount format:", body.amount);
           return NextResponse.json(
@@ -287,6 +314,19 @@ export async function POST(request: Request) {
         // Convert to paise (smallest currency unit) for Razorpay
         const amountInPaise = Math.round(roundedAmount * 100);
         console.log('Amount in paise:', amountInPaise);
+        
+        // Check if amount meets Razorpay's minimum requirement (1 INR = 100 paise)
+        if (amountInPaise < 100) {
+          console.error('Amount too small for Razorpay:', amountInPaise, 'paise');
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'Amount too small', 
+              details: 'Razorpay requires a minimum amount of ₹1 (100 paise). The current amount is ₹' + (amountInPaise/100).toFixed(2)
+            },
+            { status: 400 }
+          );
+        }
         
         console.log(`Using exact invoice amount: ₹${roundedAmount} (${amountInPaise} paise)`);
         

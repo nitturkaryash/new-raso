@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Eye, FileText, Plus } from "lucide-react"
+import { Eye, FileText, Plus, RefreshCw } from "lucide-react"
 import { getTransactions, type Transaction } from "@/lib/supabase"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -17,6 +17,23 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     loadTransactions()
+    
+    // Check if we need to refresh transactions (after successful payment)
+    if (typeof window !== 'undefined') {
+      const shouldRefresh = sessionStorage.getItem('refreshTransactions');
+      if (shouldRefresh === 'true') {
+        // Clear the flag
+        sessionStorage.removeItem('refreshTransactions');
+        // Reload transactions
+        loadTransactions();
+        
+        // Show a toast notification
+        toast({
+          title: "Payment Processed",
+          description: "Your transaction list has been updated with the latest payment status.",
+        });
+      }
+    }
   }, [])
 
   async function loadTransactions() {
@@ -39,12 +56,18 @@ export default function TransactionsPage() {
     <div className="container mx-auto py-10 px-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Transactions</h1>
-        <Link href="/transactions/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            New Transaction
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadTransactions} disabled={isLoading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
           </Button>
-        </Link>
+          <Link href="/transactions/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              New Transaction
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <Card>
@@ -83,8 +106,16 @@ export default function TransactionsPage() {
                         <TableCell>{transaction.customer_name}</TableCell>
                         <TableCell className="text-right">₹{transaction.total_amount.toFixed(2)}</TableCell>
                         <TableCell>
-                          <Badge variant={transaction.payment_status === "paid" ? "success" : "outline"}>
-                            {transaction.payment_status === "paid" ? "Paid" : "Pending"}
+                          <Badge variant={
+                            transaction.payment_status === "paid" || 
+                            transaction.payment_status === "successful" ? 
+                            "success" : "outline"
+                          }>
+                            {transaction.payment_status === "paid" || 
+                             transaction.payment_status === "successful" ? 
+                             "Paid" : 
+                             transaction.payment_status === "waiting" ? 
+                             "Processing" : "Pending"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">

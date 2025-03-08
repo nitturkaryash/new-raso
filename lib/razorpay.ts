@@ -63,7 +63,17 @@ export async function createPaymentLink(data: {
           statusText: response.statusText,
           result
         });
-        throw new Error(errorMessage);
+        
+        // Create a custom error object with additional properties
+        const error = new Error(errorMessage);
+        // Add the original error details to the error object
+        Object.assign(error, { 
+          status: response.status,
+          originalError: result.error,
+          details: result.details
+        });
+        
+        throw error;
       }
       
       if (!result.paymentLink) {
