@@ -42,4 +42,37 @@ console.log(`
 Visit the invoice page at: ${appUrl}/invoice/${transactionId}
 Then open your browser's developer tools (F12) and paste the above code in the console.
 This will test if the payment amount matches the invoice amount.
-`); 
+`);
+
+// Script to verify amount handling in the API
+async function verifyAmountHandling() {
+  try {
+    console.log('Testing API with valid transaction ID and explicit amount:');
+    const response = await fetch('http://localhost:3000/api/razorpay', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        transactionId: 'e062aecf-cd65-4a0a-9146-ff4bebecc134',
+        amount: 7.51 // Explicitly include the amount
+      })
+    });
+    
+    const result = await response.json();
+    console.log('Status:', response.status);
+    console.log('Response:', result);
+    
+    if (result.success) {
+      console.log('✅ Test passed: API accepted the request with valid transaction ID and amount');
+      console.log(`Amount in paise: ${result.amount} (should be 751)`);
+    } else {
+      console.log('❌ Test failed: API rejected the request');
+    }
+    
+  } catch (error) {
+    console.error('Error:', error);
+  }
+}
+
+verifyAmountHandling(); 

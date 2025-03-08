@@ -148,7 +148,12 @@ export default function SharePage({ params }: { params: { id: string } }) {
       let orderResponse = await fetch('/api/razorpay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transactionId: transaction.id }),
+        body: JSON.stringify({ 
+          transactionId: transaction.id,
+          // Always include the amount to ensure the API works even if transaction isn't found
+          amount: transaction.total_amount,
+          description: `Payment for Invoice ${transaction.invoice_number}`
+        }),
       });
       
       let responseText = await orderResponse.text();
@@ -178,11 +183,19 @@ export default function SharePage({ params }: { params: { id: string } }) {
           description: "Creating test payment for demonstration purposes.",
         });
         
+        // Use the same amount we got from the original transaction
+        const fallbackAmount = transaction.total_amount || 100;
+        
         // Try with a known test transaction ID
         orderResponse = await fetch('/api/razorpay', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transactionId: '77e80e66-01d6-4d45-b566-11438b2684b8' }),
+          body: JSON.stringify({ 
+            transactionId: '77e80e66-01d6-4d45-b566-11438b2684b8',
+            // Always include the amount in case the fallback ID also isn't found
+            amount: fallbackAmount,
+            description: 'Fallback test payment'
+          }),
         });
         
         if (!orderResponse.ok) {

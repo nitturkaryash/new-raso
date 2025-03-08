@@ -82,7 +82,8 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
 
     // Immediately set a default value based on the transaction ID
     // This is to make the form show something immediately if needed
-    setCustomAmount('100');
+    setCustomAmount('0')
+    setShowCustomAmountForm(true)
 
     return () => {
       if (document.body.contains(script)) {
@@ -101,8 +102,11 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
           description: `The invoice with ID ${params.id} does not exist or has been deleted.`,
           variant: "destructive",
         })
-        // Add a NotFound component to display
+        // Add a NotFound component to display and prompt for custom amount
         setTransaction(null)
+        // Set a reasonable default amount for the custom amount field
+        setCustomAmount('0')
+        setShowCustomAmountForm(true)
         return
       }
       
@@ -194,14 +198,14 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
       console.log("Creating order via API for transaction ID:", transaction.id);
       console.log("Invoice amount:", transaction.total_amount, "Type:", typeof transaction.total_amount);
       
-      // Create order via API - this will always use the exact amount from the transaction
+      // Create order via API - explicitly include amount to ensure it's used even if transaction isn't found
       const orderResponse = await fetch('/api/razorpay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           transactionId: transaction.id,
-          // Include amount here as a backup, but the server should always use the transaction amount
-          amount: transaction.total_amount 
+          amount: transaction.total_amount, // Always include the amount
+          description: `Payment for Invoice ${transaction.invoice_number}`
         }),
       });
       
@@ -401,8 +405,11 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
     try {
       // Use custom amount for direct payment
       const amount = parsedAmount;
-      // Calculate total with GST
-      const totalWithGST = Math.round((amount * 1.18) * 100) / 100; // 18% GST
+      
+      // Always include GST in the UI calculation
+      const gstRate = 18; // 18% GST
+      const gstAmount = (amount * gstRate / 100);
+      const totalWithGST = Math.round((amount + gstAmount) * 100) / 100;
       
       console.log(`Creating direct payment order with amount: ${amount} (with GST: ${totalWithGST})`);
       
@@ -411,16 +418,16 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          // No transactionId - this is a direct payment
-          // Send the EXACT amount we want to charge
-          amount: totalWithGST, 
+          // If the transaction wasn't found, still include the ID for logging purposes
+          transactionId: params.id,
+          amount: totalWithGST, // Always include the amount for direct payments
           currency: 'INR',
-          description: `Custom payment of ₹${totalWithGST.toFixed(2)} (includes 18% GST)`,
+          description: `Custom payment of ₹${totalWithGST.toFixed(2)} (includes ${gstRate}% GST)`,
           notes: {
-            invoiceId: params.id, // Use invoiceId instead of transactionId for clarity
-            source: 'direct-payment',
+            invoiceId: params.id,
+            source: 'custom-payment',
             baseAmount: amount.toString(),
-            gst: '18%',
+            gstRate: `${gstRate}%`,
             totalWithGST: totalWithGST.toString()
           }
         }),
@@ -526,15 +533,25 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
                     onChange={handleAmountChange}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     placeholder="Enter amount"
+                    autoFocus
                   />
                 </div>
                 
                 <div className="text-sm text-muted-foreground mt-2 text-left">
                   <p>Amount breakdown:</p>
                   <div className="border-t mt-2 pt-2">
-                    <p className="flex justify-between"><span>Subtotal:</span> <span>₹{parseFloat(customAmount || '0').toFixed(2)}</span></p>
-                    <p className="flex justify-between"><span>GST (18%):</span> <span>₹{(parseFloat(customAmount || '0') * 0.18).toFixed(2)}</span></p>
-                    <p className="flex justify-between font-semibold border-t mt-1 pt-1"><span>Total:</span> <span>₹{(parseFloat(customAmount || '0') * 1.18).toFixed(2)}</span></p>
+                    {parseFloat(customAmount) > 0 ? (
+                      <>
+                        <p className="flex justify-between"><span>Base Amount:</span> <span>₹{parseFloat(customAmount).toFixed(2)}</span></p>
+                        <p className="flex justify-between"><span>GST (18%):</span> <span>₹{(parseFloat(customAmount) * 0.18).toFixed(2)}</span></p>
+                        <p className="flex justify-between font-semibold border-t mt-1 pt-1">
+                          <span>Total:</span> 
+                          <span>₹{(parseFloat(customAmount) * 1.18).toFixed(2)}</span>
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-center text-muted-foreground italic">Enter an amount to see the breakdown</p>
+                    )}
                   </div>
                 </div>
                 
@@ -544,7 +561,10 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
                   className="w-full mt-4"
                 >
                   <CreditCard className="mr-2 h-5 w-5" />
-                  {isProcessingPayment ? "Processing..." : `Pay Now (₹${(parseFloat(customAmount || '0') * 1.18).toFixed(2)})`}
+                  {isProcessingPayment ? "Processing..." : parseFloat(customAmount) > 0 
+                    ? `Pay Now (₹${(parseFloat(customAmount) * 1.18).toFixed(2)} with GST)`
+                    : "Pay Now"
+                  }
                 </Button>
                 <Button 
                   variant="outline" 

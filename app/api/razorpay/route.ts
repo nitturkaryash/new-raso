@@ -154,21 +154,24 @@ export async function POST(request: Request) {
     // Try to get real transaction data first
     let transaction;
     try {
+      console.log(`Attempting to fetch transaction with ID: ${transactionId}`);
       transaction = await getTransaction(transactionId);
-      console.log("Retrieved transaction data:", transaction ? "Found" : "Not found");
+      console.log(`Transaction fetch result: ${transaction ? "Found" : "Not found"}`);
       
-      if (!transaction) {
-        console.error(`Transaction with ID ${transactionId} not found. Creating a direct payment instead.`);
+      if (transaction) {
+        console.log(`Transaction details: Invoice #${transaction.invoice_number}, Amount: ${transaction.total_amount}`);
+      } else {
+        console.log(`Transaction with ID ${transactionId} not found. Looking for amount in request.`);
         
-        // If transaction not found, check if amount is provided in the request body
-        // NEVER use a hardcoded amount - either use what was provided or throw an error
+        // Check if amount is provided in the request body
         if (!body.amount) {
           console.error("No amount provided for direct payment and no transaction found");
           return NextResponse.json(
             { 
               success: false, 
               error: 'Missing payment amount', 
-              details: 'An amount is required when the invoice cannot be found'
+              details: 'An amount is required when the invoice cannot be found',
+              transactionId: transactionId
             },
             { status: 400 }
           );
@@ -181,19 +184,21 @@ export async function POST(request: Request) {
           if (isNaN(customAmount) || customAmount <= 0) {
             throw new Error('Invalid amount');
           }
+          console.log(`Valid amount found in request: ${customAmount}`);
         } catch (error) {
           console.error("Invalid amount format:", body.amount);
           return NextResponse.json(
             { 
               success: false, 
               error: 'Invalid amount', 
-              details: 'The provided amount must be a positive number'
+              details: 'The provided amount must be a positive number',
+              receivedValue: body.amount
             },
             { status: 400 }
           );
         }
         
-        console.log(`Using provided amount for payment: ${customAmount}`);
+        console.log(`Using amount from request for payment: ${customAmount}`);
         
         const directCurrency = body.currency || 'INR';
         
@@ -203,16 +208,16 @@ export async function POST(request: Request) {
           receipt: `receipt_direct_${Math.random().toString(36).substring(2, 10)}`,
           notes: {
             attempted_transaction_id: transactionId,
-            source: 'direct-payment-fallback',
+            source: 'direct-payment',
             description: body.description || 'Direct payment (transaction not found)',
             custom_amount: customAmount.toString()
           }
         };
         
         try {
-          console.log(`Creating direct fallback Razorpay order with amount: ${customAmount} ${directCurrency}`);
+          console.log(`Creating direct payment order with amount: ${customAmount} ${directCurrency}`);
           const order = await razorpay.orders.create(orderOptions);
-          console.log("Direct fallback Razorpay order created:", order);
+          console.log("Direct payment order created:", order);
           
           return NextResponse.json({
             success: true,
@@ -221,16 +226,16 @@ export async function POST(request: Request) {
             currency: orderOptions.currency,
             receipt: orderOptions.receipt,
             notes: orderOptions.notes,
-            fallback: true,
+            directPayment: true,
             originalTransactionId: transactionId
           });
         } catch (razorpayError) {
-          console.error("Error creating direct fallback Razorpay order:", razorpayError);
+          console.error("Error creating direct payment order:", razorpayError);
           
           return NextResponse.json(
             { 
               success: false, 
-              error: 'Failed to create direct fallback Razorpay order', 
+              error: 'Failed to create direct payment order', 
               details: razorpayError instanceof Error ? razorpayError.message : String(razorpayError)
             },
             { status: 500 }

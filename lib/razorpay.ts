@@ -40,6 +40,10 @@ export async function createPaymentLink(data: {
       },
       body: JSON.stringify({
         transactionId: data.invoiceId,
+        amount: data.amount,
+        customerName: data.customerName,
+        customerEmail: data.customerEmail,
+        description: data.description
       }),
     });
 

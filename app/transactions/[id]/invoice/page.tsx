@@ -129,7 +129,12 @@ export default function InvoicePage({ params }: { params: { id: string } }) {
       const orderResponse = await fetch('/api/razorpay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transactionId: transaction.id }),
+        body: JSON.stringify({ 
+          transactionId: transaction.id,
+          // Always include the amount to ensure the API works even if transaction isn't found
+          amount: transaction.total_amount,
+          description: `Payment for Invoice ${transaction.invoice_number}`
+        }),
       });
       
       const responseText = await orderResponse.text();
