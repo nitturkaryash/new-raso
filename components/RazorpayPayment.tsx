@@ -63,11 +63,22 @@ export default function RazorpayPayment({
     }
     
     try {
+      // Extract the order ID correctly from the response
+      const orderId = orderData.orderId || (orderData.id ? orderData.id : null)
+      
+      if (!orderId) {
+        console.error('Order ID is missing from order data', orderData)
+        setIsProcessing(false)
+        return
+      }
+      
+      console.log('Opening Razorpay with order ID:', orderId)
+      
       const options = {
         key: razorpayKeyId,
         amount: orderData.amount || Math.round(transaction.total_amount * 100), // Amount in paise
         currency: orderData.currency || 'INR',
-        order_id: orderData.orderId,
+        order_id: orderId,
         name: 'Invoice Payment',
         description: `Payment for Invoice #${transaction.invoice_number}`,
         receipt: orderData.receipt,
@@ -76,6 +87,7 @@ export default function RazorpayPayment({
           invoiceNumber: transaction.invoice_number
         },
         handler: function(response: any) {
+          console.log('Payment successful, response:', response)
           setIsProcessing(false)
           onSuccess(response)
         },
@@ -88,11 +100,14 @@ export default function RazorpayPayment({
         },
         modal: {
           ondismiss: function() {
+            console.log('Payment modal dismissed')
             setIsProcessing(false)
             onCancel()
           }
         }
       }
+      
+      console.log('Razorpay options:', options)
       
       const razorpay = new window.Razorpay(options)
       razorpay.on('payment.failed', function(response: any) {

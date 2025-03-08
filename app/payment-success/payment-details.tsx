@@ -165,6 +165,14 @@ export default function PaymentDetails() {
     }
   }
   
+  // Determine if the user is an admin or customer based on the URL
+  const isAdminView = () => {
+    if (typeof window === 'undefined') return false;
+    
+    // If the fallback URL contains '/public/' it's a customer view
+    return !fallbackUrl || !fallbackUrl.includes('/public/');
+  }
+  
   return (
     <div className="container mx-auto py-10">
       <Card className="max-w-3xl mx-auto">
@@ -256,11 +264,13 @@ export default function PaymentDetails() {
             </Button>
           )}
           
-          <Button 
-            onClick={handleReturnToTransactions}
-          >
-            View All Transactions
-          </Button>
+          {isAdminView() && (
+            <Button 
+              onClick={handleReturnToTransactions}
+            >
+              View All Transactions
+            </Button>
+          )}
         </CardFooter>
       </Card>
     </div>

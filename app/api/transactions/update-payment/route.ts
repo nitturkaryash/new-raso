@@ -23,22 +23,34 @@ export async function POST(request: Request) {
     try {
       // Get the current transaction first for debugging
       const currentTransaction = await getTransaction(transactionId);
+      
+      if (!currentTransaction) {
+        console.error(`Transaction ${transactionId} not found`);
+        return NextResponse.json(
+          { success: false, error: `Transaction ${transactionId} not found` },
+          { status: 404 }
+        );
+      }
+      
       console.log("Current transaction state:", {
-        id: currentTransaction?.id,
-        payment_status: currentTransaction?.payment_status,
-        payment_id: currentTransaction?.payment_id
+        id: currentTransaction.id,
+        payment_status: currentTransaction.payment_status,
+        payment_id: currentTransaction.payment_id
       });
+      
+      // If already successful, just return success
+      if (currentTransaction.payment_status === 'successful' || 
+          currentTransaction.payment_status === 'paid') {
+        console.log(`Transaction ${transactionId} already marked as ${currentTransaction.payment_status}`);
+        return NextResponse.json({
+          success: true,
+          message: `Payment status already marked as ${currentTransaction.payment_status}`,
+          transaction: currentTransaction
+        });
+      }
       
       // Update the transaction payment status
       const updatedTransaction = await updateTransactionPayment(transactionId, paymentId);
-      
-      if (!updatedTransaction) {
-        console.error("Failed to update transaction payment status - null result returned");
-        return NextResponse.json(
-          { success: false, error: 'Failed to update transaction payment status' },
-          { status: 500 }
-        );
-      }
       
       console.log("Transaction payment status updated successfully:", {
         id: updatedTransaction.id,
@@ -57,11 +69,18 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error("Error updating payment status:", error);
       
+      // Get the specific error message
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Unknown error occurred';
+      
       return NextResponse.json(
         { 
           success: false, 
           error: 'Failed to update payment status', 
-          details: error instanceof Error ? error.message : String(error)
+          details: errorMessage,
+          transactionId: transactionId,
+          paymentId: paymentId
         },
         { status: 500 }
       );

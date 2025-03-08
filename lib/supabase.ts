@@ -676,22 +676,46 @@ export async function updateTransaction(id: string, transaction: Partial<Omit<Tr
 }
 
 export async function updateTransactionPayment(id: string, paymentId: string) {
-  const { data, error } = await supabase
-    .from('transactions')
-    .update({ 
-      payment_status: 'successful',
-      payment_id: paymentId
-    })
-    .eq('id', id)
-    .select()
-    .single();
+  console.log(`Updating transaction ${id} payment status to 'successful' with payment ID ${paymentId}`);
   
-  if (error) {
-    console.error('Error updating transaction payment:', error);
-    return null;
+  try {
+    // First check if the transaction exists
+    const { data: existingTransaction, error: fetchError } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (fetchError) {
+      console.error(`Error fetching transaction ${id}:`, fetchError);
+      throw new Error(`Transaction not found: ${fetchError.message}`);
+    }
+    
+    console.log(`Found transaction ${id}, current status: ${existingTransaction.payment_status}`);
+    
+    // Now update the transaction
+    const { data, error } = await supabase
+      .from('transactions')
+      .update({ 
+        payment_status: 'successful',
+        payment_id: paymentId
+      })
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error(`Error updating transaction ${id} payment:`, error);
+      throw new Error(`Failed to update transaction: ${error.message}`);
+    }
+    
+    console.log(`Successfully updated transaction ${id} to 'successful' status`);
+    return data as Transaction;
+  } catch (error) {
+    console.error(`Caught error in updateTransactionPayment for ${id}:`, error);
+    // Instead of returning null, throw the error so the caller can handle it properly
+    throw error;
   }
-  
-  return data as Transaction;
 }
 
 export async function deleteTransaction(id: string) {
