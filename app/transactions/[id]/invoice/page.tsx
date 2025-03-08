@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Download, Printer, CreditCard, Share2, Link } from "lucide-react"
-import { getTransaction, updateTransactionPayment } from "@/lib/supabase"
+import { getTransaction, updateTransactionPayment, type Transaction } from "@/lib/supabase"
 import { useToast } from "@/components/ui/use-toast"
 import {
   Dialog,
@@ -19,7 +19,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createPaymentLink } from "@/lib/razorpay"
-import { type Transaction } from '@/lib/temp'
 
 declare global {
   interface Window {

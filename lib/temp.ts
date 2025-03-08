@@ -15,7 +15,7 @@ export type Transaction = {
   cgst_amount: number;
   sgst_amount: number;
   total_amount: number;
-  payment_status: "pending" | "paid";
+  payment_status: "pending" | "paid" | "successful" | "waiting";
   payment_id?: string;
   items: any[];
   created_at?: string;
