@@ -6,11 +6,11 @@ import { Toaster } from "@/components/ui/toaster"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Invoice",
-  description: "View and pay your invoice",
+  title: "Payment Success",
+  description: "Your payment has been processed successfully",
 }
 
-export default function PublicLayout({
+export default function PaymentSuccessLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
