@@ -80,7 +80,12 @@ export default function PaymentDetails() {
     setIsUpdatingPayment(true);
     setUpdateError(null);
     
+    console.log(`Attempting to update payment status for transaction ${txnId} with payment ID ${pymtId}`);
+    
     try {
+      // Add a delay to ensure the previous payment callbacks have completed
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       const response = await fetch('/api/transactions/update-payment', {
         method: 'POST',
         headers: {
@@ -93,12 +98,34 @@ export default function PaymentDetails() {
       });
       
       const data = await response.json();
+      console.log('Update payment status response:', data);
       
       if (!response.ok || !data.success) {
+        console.error('Error in update payment response:', data);
         throw new Error(data.error || 'Failed to update payment status');
       }
       
-      console.log('Payment status updated successfully');
+      console.log('Payment status updated successfully to "successful"');
+      
+      // Do a second update attempt after a short delay to ensure it's saved
+      setTimeout(async () => {
+        try {
+          const secondResponse = await fetch('/api/transactions/update-payment', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              transactionId: txnId,
+              paymentId: pymtId
+            }),
+          });
+          
+          console.log('Second update attempt result:', await secondResponse.json());
+        } catch (error) {
+          console.error('Error in second update attempt:', error);
+        }
+      }, 3000);
     } catch (error) {
       console.error('Error updating payment status:', error);
       setUpdateError(error instanceof Error ? error.message : 'Failed to update payment status');

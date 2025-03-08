@@ -69,7 +69,7 @@ export function middleware(req: NextRequest) {
   // Add security headers
   const cspHeader = `
     default-src 'self';
-    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.rzp.io;
+    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.rzp.io https://*.razorpay.com;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     img-src 'self' data: https: blob:;
     font-src 'self' data: https://fonts.gstatic.com;
@@ -77,12 +77,13 @@ export function middleware(req: NextRequest) {
       https://api.razorpay.com 
       https://*.razorpay.com
       https://lumberjack.razorpay.com
+      https://*.rzp.io
       https://vercel.live 
       https://*.vercel.app 
       https://bctyvhykgrytmtmubwvt.supabase.co
       http://localhost:* 
       http://127.0.0.1:*;
-    frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://*.rzp.io;
+    frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://*.rzp.io https://*.razorpay.com;
     object-src 'none';
     base-uri 'self';
     form-action 'self';

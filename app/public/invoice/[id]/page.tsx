@@ -8,45 +8,47 @@ import { Printer, CreditCard, Calendar, User, Mail, FileText } from "lucide-reac
 import { getTransaction, type Transaction } from "@/lib/supabase"
 import { useToast } from "@/components/ui/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import dynamic from 'next/dynamic'
 
-declare global {
-  interface Window {
-    Razorpay: any
-  }
+// Define Razorpay type to avoid hydration errors
+interface RazorpayOptions {
+  key: string;
+  amount: number;
+  currency: string;
+  order_id: string;
+  name: string;
+  description: string;
+  receipt?: string;
+  notes?: Record<string, string>;
+  handler: (response: any) => void;
+  prefill?: {
+    name?: string;
+    email?: string;
+    contact?: string;
+  };
+  theme?: {
+    color?: string;
+  };
+  modal?: {
+    ondismiss?: () => void;
+  };
 }
+
+// Client-side only component for Razorpay integration
+const RazorpayPayment = dynamic(() => import('@/components/RazorpayPayment'), { 
+  ssr: false, 
+  loading: () => <Button disabled><CreditCard className="h-4 w-4 mr-2" />Loading Payment...</Button>
+})
 
 export default function PublicInvoicePage({ params }: { params: { id: string } }) {
   const { toast } = useToast()
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
-  const [razorpayLoaded, setRazorpayLoaded] = useState(false)
+  const [orderData, setOrderData] = useState<any>(null)
 
   useEffect(() => {
-    // Declare Razorpay type for TypeScript
-    if (typeof window !== 'undefined') {
-      window.Razorpay = window.Razorpay || {};
-    }
-    
     loadTransaction()
-
-    // Load Razorpay script
-    if (typeof window !== 'undefined') {
-      const script = document.createElement("script")
-      script.src = "https://checkout.razorpay.com/v1/checkout.js"
-      script.async = true
-      script.onload = () => {
-        console.log("Razorpay script loaded successfully")
-        setRazorpayLoaded(true)
-      }
-      script.onerror = (error) => {
-        console.error("Failed to load Razorpay script:", error)
-      }
-      document.body.appendChild(script)
-
-      // Debug: Check if Razorpay key is available
-      console.log("Razorpay key in environment:", process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ? "Available" : "Not available")
-    }
   }, [])
 
   async function loadTransaction() {
@@ -89,28 +91,6 @@ export default function PublicInvoicePage({ params }: { params: { id: string } }
     setIsProcessingPayment(true)
     console.log("Payment process started")
 
-    // Check if Razorpay key is available and script is loaded
-    const razorpayKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
-    
-    console.log("Razorpay key:", razorpayKeyId)
-    console.log("Razorpay script loaded:", razorpayLoaded)
-    console.log("Razorpay global object:", typeof window !== 'undefined' ? (window.Razorpay ? "Available" : "Not available") : "Window not defined")
-    console.log("Type of Razorpay:", typeof window !== 'undefined' ? typeof window.Razorpay : "undefined")
-
-    // Use mock payment only if Razorpay is not available
-    if (!razorpayKeyId || !razorpayLoaded || (typeof window !== 'undefined' && !window.Razorpay)) {
-      console.error("Razorpay is not available or properly configured")
-      
-      toast({
-        title: "Payment Error",
-        description: "The payment system is not available. Please contact the merchant for alternative payment methods.",
-        variant: "destructive",
-      })
-      
-      setIsProcessingPayment(false)
-      return
-    }
-
     try {
       console.log("Creating order via API")
       // Create order via API
@@ -128,10 +108,10 @@ export default function PublicInvoicePage({ params }: { params: { id: string } }
       const responseText = await orderResponse.text();
       console.log("Raw API response:", responseText);
       
-      let orderData;
+      let orderResult;
       try {
-        orderData = JSON.parse(responseText);
-        console.log("Parsed order data:", orderData);
+        orderResult = JSON.parse(responseText);
+        console.log("Parsed order data:", orderResult);
       } catch (parseError) {
         console.error("Failed to parse API response:", parseError);
         toast({
@@ -144,19 +124,19 @@ export default function PublicInvoicePage({ params }: { params: { id: string } }
       }
       
       if (!orderResponse.ok) {
-        console.error("Order creation failed:", orderResponse.status, orderData);
+        console.error("Order creation failed:", orderResponse.status, orderResult);
         
         // Special handling for amount too small error
-        if (orderData.error === 'Amount too small') {
+        if (orderResult.error === 'Amount too small') {
           toast({
             title: "Amount Too Small for Direct Payment",
-            description: orderData.details || "The amount is too small for direct payment. Please contact the merchant for alternative payment methods.",
+            description: orderResult.details || "The amount is too small for direct payment. Please contact the merchant for alternative payment methods.",
             variant: "destructive",
           });
         } else {
           toast({
             title: "Payment Initialization Failed",
-            description: orderData.error || "Could not initialize payment. Please try again later.",
+            description: orderResult.error || "Could not initialize payment. Please try again later.",
             variant: "destructive",
           });
         }
@@ -165,99 +145,8 @@ export default function PublicInvoicePage({ params }: { params: { id: string } }
         return;
       }
       
-      if (!orderData.success) {
-        console.error("Invalid order data received:", orderData);
-        
-        toast({
-          title: "Payment Initialization Failed",
-          description: orderData.error || "Invalid order data received. Please try again later.",
-          variant: "destructive",
-        });
-        
-        setIsProcessingPayment(false);
-        return;
-      }
+      setOrderData(orderResult);
       
-      if (!orderData.orderId) {
-        console.error("Order ID missing in response:", orderData);
-        
-        toast({
-          title: "Payment Initialization Failed",
-          description: "Order ID missing in response. Please try again later.",
-          variant: "destructive",
-        });
-        
-        setIsProcessingPayment(false);
-        return;
-      }
-      
-      console.log("Order created successfully:", orderData);
-      
-      // Add a small delay to ensure Razorpay is fully loaded
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Double check Razorpay is available
-      if (typeof window.Razorpay !== 'function') {
-        console.error("Razorpay is not available as a function after delay");
-        console.log("Type of window.Razorpay:", typeof window.Razorpay);
-        
-        toast({
-          title: "Payment Error",
-          description: "Payment gateway not available. Please try again or contact support.",
-          variant: "destructive",
-        });
-        setIsProcessingPayment(false);
-        return;
-      }
-      
-      const options = {
-        key: razorpayKeyId,
-        amount: orderData.amount || Math.round(transaction.total_amount * 100), // Amount in paise
-        currency: orderData.currency || "INR",
-        order_id: orderData.orderId,
-        name: "Invoice Payment",
-        description: `Payment for Invoice #${transaction.invoice_number}`,
-        receipt: orderData.receipt,
-        notes: orderData.notes || {
-          transactionId: transaction.id,
-          invoiceNumber: transaction.invoice_number
-        },
-        handler: async function(response: any) {
-          try {
-            console.log("Payment successful:", response)
-            
-            // Redirect to success page
-            window.location.href = `/payment-success?paymentId=${response.razorpay_payment_id}&amount=${transaction.total_amount}&fallbackUrl=${encodeURIComponent(`/public/invoice/${transaction.id}`)}&transaction_id=${transaction.id}`;
-          } catch (error) {
-            console.error("Error handling payment success:", error)
-            toast({
-              title: "Error",
-              description: "Payment was successful, but we couldn't process the completion. Please contact the merchant.",
-              variant: "destructive",
-            })
-          } finally {
-            setIsProcessingPayment(false)
-          }
-        },
-        prefill: {
-          name: transaction.customer_name,
-          email: transaction.customer_email,
-        },
-        theme: {
-          color: "#10b981",
-        },
-        modal: {
-          ondismiss: function() {
-            console.log("Payment modal dismissed")
-            setIsProcessingPayment(false)
-          }
-        }
-      }
-      
-      console.log("Initializing Razorpay with options:", options)
-      
-      const razorpay = new window.Razorpay(options)
-      razorpay.open()
     } catch (error) {
       console.error("Error in payment process:", error)
       toast({
@@ -268,6 +157,48 @@ export default function PublicInvoicePage({ params }: { params: { id: string } }
       setIsProcessingPayment(false)
     }
   }
+
+  const handlePaymentSuccess = async (response: any) => {
+    console.log("Payment successful:", response);
+    
+    try {
+      // Update transaction payment status first
+      const updateResponse = await fetch('/api/transactions/update-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transactionId: transaction?.id,
+          paymentId: response.razorpay_payment_id
+        }),
+      });
+      
+      const updateData = await updateResponse.json();
+      
+      if (!updateResponse.ok) {
+        console.error("Error updating payment status:", updateData);
+      } else {
+        console.log("Payment status updated successfully");
+      }
+      
+      // Redirect to success page
+      window.location.href = `/payment-success?paymentId=${response.razorpay_payment_id}&amount=${transaction?.total_amount}&fallbackUrl=${encodeURIComponent(`/public/invoice/${transaction?.id}`)}&transaction_id=${transaction?.id}`;
+    } catch (error) {
+      console.error("Error handling payment success:", error);
+      toast({
+        title: "Error",
+        description: "Payment was successful, but we couldn't process the completion. Please contact the merchant.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const handlePaymentCanceled = () => {
+    console.log("Payment modal dismissed");
+    setOrderData(null);
+    setIsProcessingPayment(false);
+  };
 
   if (isLoading) {
     return (
@@ -335,14 +266,23 @@ export default function PublicInvoicePage({ params }: { params: { id: string } }
                   Print
                 </Button>
                 {(transaction.payment_status === "pending") && (
-                  <Button 
-                    size="sm" 
-                    onClick={handlePayment}
-                    disabled={isProcessingPayment}
-                  >
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    {isProcessingPayment ? "Processing..." : "Pay Now"}
-                  </Button>
+                  orderData ? (
+                    <RazorpayPayment
+                      orderData={orderData}
+                      transaction={transaction}
+                      onSuccess={handlePaymentSuccess}
+                      onCancel={handlePaymentCanceled}
+                    />
+                  ) : (
+                    <Button 
+                      size="sm" 
+                      onClick={handlePayment}
+                      disabled={isProcessingPayment}
+                    >
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      {isProcessingPayment ? "Processing..." : "Pay Now"}
+                    </Button>
+                  )
                 )}
               </div>
             </div>
@@ -462,7 +402,7 @@ export default function PublicInvoicePage({ params }: { params: { id: string } }
           <div className="text-sm text-muted-foreground">
             Thank you for your business!
           </div>
-          {(transaction.payment_status === "pending") && (
+          {(transaction.payment_status === "pending") && !orderData && (
             <Button 
               onClick={handlePayment}
               disabled={isProcessingPayment}
