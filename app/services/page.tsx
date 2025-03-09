@@ -1,27 +1,28 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import Link from "next/link"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Edit, Plus, Search, Trash } from "lucide-react"
-import { getServices, deleteService, type Service, checkAuth } from "@/lib/supabase"
-import supabaseClient from "@/lib/supabase"
+import { Badge } from "@/components/ui/badge"
+import { Pencil, Plus, Search, Trash2 } from "lucide-react"
+import { getServices, checkAuth } from "@/lib/supabase"
 import { useToast } from "@/components/ui/use-toast"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import Link from "next/link"
+import supabaseClient from "@/lib/supabase"
+
+interface Service {
+  id: string
+  name: string
+  description: string
+  price: number
+  active: boolean
+  hsn_code: string
+  gst_rate: number
+  created_at: string
+}
 
 export default function ServicesPage() {
   const [services, setServices] = useState<Service[]>([])
@@ -33,6 +34,18 @@ export default function ServicesPage() {
 
   useEffect(() => {
     async function checkAuthentication() {
+      // Check for admin login in session storage
+      if (typeof window !== 'undefined') {
+        const isAdmin = sessionStorage.getItem('isAdmin')
+        
+        if (isAdmin === 'true') {
+          setAuthStatus("Authenticated as Admin");
+          fetchServices();
+          return;
+        }
+      }
+      
+      // Fallback to Supabase auth check
       const { data, error } = await checkAuth();
       if (error || !data || !data.session) {
         setAuthStatus("Not authenticated");
@@ -41,10 +54,11 @@ export default function ServicesPage() {
           description: "Please log in to manage services",
           variant: "destructive",
         });
+        router.push("/login");
       } else {
         setAuthStatus("Authenticated as " + (data.session?.user?.email || "unknown"));
+        fetchServices();
       }
-      fetchServices();
     }
     
     checkAuthentication();
@@ -71,6 +85,13 @@ export default function ServicesPage() {
 
   const handleLogout = async () => {
     try {
+      // Clear admin session if exists
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('isAdmin')
+        sessionStorage.removeItem('userEmail')
+        sessionStorage.removeItem('userName')
+      }
+      
       const { error } = await supabaseClient.auth.signOut();
       if (error) {
         toast({
@@ -90,135 +111,108 @@ export default function ServicesPage() {
     }
   };
 
-  async function handleDeleteService(id: string) {
-    try {
-      await deleteService(id)
-      setServices(services.filter((service) => service.id !== id))
-      toast({
-        title: "Success",
-        description: "Item deleted successfully",
-      })
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete item",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const filteredServices = services.filter((service) =>
+  // Filter services based on search term
+  const filteredServices = services.filter(service => 
     service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    service.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    service.hsn_code?.toLowerCase().includes(searchTerm.toLowerCase())
+    service.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    service.hsn_code.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   return (
-    <div className="container mx-auto py-10 px-4">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Products & Services</h1>
-        <div className="flex gap-2">
-          <Button asChild>
-            <Link href="/services/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Item
-            </Link>
-          </Button>
+    <div className="container mx-auto py-10">
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <CardTitle>Items</CardTitle>
+              <CardDescription>
+                Manage your products and services
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Search items..."
+                  className="pl-8 w-[200px] md:w-[300px]"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <Link href="/services/new">
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Item
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex justify-center items-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+          ) : filteredServices.length === 0 ? (
+            <div className="text-center py-10">
+              <p className="text-muted-foreground">No items found. Add your first item to get started.</p>
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>HSN/SAC</TableHead>
+                    <TableHead>GST Rate</TableHead>
+                    <TableHead className="text-right">Price</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredServices.map((service) => (
+                    <TableRow key={service.id}>
+                      <TableCell className="font-medium">{service.name}</TableCell>
+                      <TableCell>{service.hsn_code}</TableCell>
+                      <TableCell>{service.gst_rate}%</TableCell>
+                      <TableCell className="text-right">₹{service.price.toFixed(2)}</TableCell>
+                      <TableCell>
+                        <Badge variant={service.active ? "default" : "secondary"}>
+                          {service.active ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Link href={`/services/${service.id}/edit`}>
+                            <Button variant="outline" size="icon">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <Link href={`/services/${service.id}/delete`}>
+                            <Button variant="outline" size="icon">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+        <CardFooter className="flex justify-between">
+          <div className="text-sm text-muted-foreground">
+            {filteredServices.length} items • {authStatus}
+          </div>
           <Button variant="outline" onClick={handleLogout}>
             Logout
           </Button>
-        </div>
-      </div>
-      
-      <div className="mb-4 text-sm">
-        Authentication Status: {authStatus}
-      </div>
-
-      <div className="mb-6">
-        <div className="relative">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search items..."
-            className="pl-8"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="text-center py-4">Loading items...</div>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>HSN/SAC</TableHead>
-              <TableHead>Price</TableHead>
-              <TableHead>GST Rate</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredServices.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-4">
-                  No items found. <Link href="/services/new" className="text-blue-500 hover:underline">Add your first item</Link>
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredServices.map((service) => (
-                <TableRow key={service.id}>
-                  <TableCell className="font-medium">{service.name}</TableCell>
-                  <TableCell>{service.hsn_code}</TableCell>
-                  <TableCell>₹{service.price.toFixed(2)}</TableCell>
-                  <TableCell>{service.gst_rate}%</TableCell>
-                  <TableCell>
-                    {service.active ? (
-                      <span className="text-green-600">Active</span>
-                    ) : (
-                      <span className="text-red-600">Inactive</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="icon" asChild>
-                        <Link href={`/services/${service.id}`}>
-                          <Edit className="h-4 w-4" />
-                          <span className="sr-only">Edit</span>
-                        </Link>
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <Trash className="h-4 w-4" />
-                            <span className="sr-only">Delete</span>
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete the item. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteService(service.id)}>
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      )}
+        </CardFooter>
+      </Card>
     </div>
   )
 }

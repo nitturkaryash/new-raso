@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import supabaseServer from '@/lib/supabase-server';
 import { Invoice, InvoiceItem } from '@/lib/invoices';
 
+// Mark this route as dynamic to prevent static generation errors
+export const dynamic = 'force-dynamic';
+
 // Generate invoice number with a prefix, current year, and sequential number
 function generateInvoiceNumber() {
   const now = new Date();

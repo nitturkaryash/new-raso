@@ -11,6 +11,9 @@ interface RazorpayError {
   name?: string;
 }
 
+// Mark this route as dynamic to prevent static generation errors
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   console.log("Payment link API route called");
   

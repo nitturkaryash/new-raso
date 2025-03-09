@@ -1,9 +1,25 @@
+"use client"
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowRight, FileText, Package, Settings } from "lucide-react"
 
 export default function Home() {
+  const router = useRouter()
+  
+  useEffect(() => {
+    // Check if user is authenticated
+    const isAdmin = typeof window !== 'undefined' ? sessionStorage.getItem('isAdmin') === 'true' : false
+    
+    // If not authenticated, redirect to login
+    if (!isAdmin) {
+      router.push('/login')
+    }
+  }, [router])
+  
   return (
     <div className="container mx-auto py-10 px-4">
       <h1 className="text-3xl font-bold mb-2">GST Invoice Management System</h1>

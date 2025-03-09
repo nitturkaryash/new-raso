@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
-import { Check, ArrowLeft, Printer, Share } from 'lucide-react'
+import { Check, ArrowLeft, Printer, Share, FileText } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 export default function PaymentDetails() {
   const router = useRouter()
@@ -16,6 +17,8 @@ export default function PaymentDetails() {
   const [transactionId, setTransactionId] = useState<string | null>(null)
   const [isUpdatingPayment, setIsUpdatingPayment] = useState<boolean>(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
+  const [invoiceNumber, setInvoiceNumber] = useState<string | null>(null)
+  const [customerName, setCustomerName] = useState<string | null>(null)
   
   useEffect(() => {
     // Get the payment ID, amount, and fallback URL from the URL
@@ -23,10 +26,14 @@ export default function PaymentDetails() {
     const amtParam = searchParams?.get('amount')
     const fbUrl = searchParams?.get('fallbackUrl')
     const txnId = searchParams?.get('transaction_id') || extractTransactionIdFromUrl(fbUrl)
+    const invNum = searchParams?.get('invoice_number')
+    const custName = searchParams?.get('customer_name')
     
     setPaymentId(id)
     setFallbackUrl(fbUrl)
     setTransactionId(txnId)
+    setInvoiceNumber(invNum)
+    setCustomerName(custName)
     
     // Parse amount correctly - ensure it's a number with 2 decimal places
     if (amtParam) {
@@ -177,11 +184,23 @@ export default function PaymentDetails() {
     <div className="container mx-auto py-10">
       <Card className="max-w-3xl mx-auto">
         <CardHeader>
-          <div className="flex items-center justify-center text-green-500 mb-4">
-            <div className="bg-green-100 p-3 rounded-full">
-              <Check size={48} />
-            </div>
-          </div>
+          <AnimatePresence>
+            <motion.div 
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.5, type: "spring" }}
+              className="flex items-center justify-center text-green-500 mb-4"
+            >
+              <motion.div 
+                initial={{ scale: 0.8 }}
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 0.5, times: [0, 0.5, 1] }}
+                className="bg-green-100 p-3 rounded-full"
+              >
+                <Check size={48} />
+              </motion.div>
+            </motion.div>
+          </AnimatePresence>
           <CardTitle className="text-center text-2xl">Payment Successful!</CardTitle>
           <CardDescription className="text-center">
             Your payment has been processed successfully.
@@ -218,6 +237,27 @@ export default function PaymentDetails() {
             </div>
           </div>
           
+          {/* Invoice Details Section */}
+          {(invoiceNumber || customerName) && (
+            <div className="border rounded-md p-4 bg-gray-50">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Invoice Details</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {invoiceNumber && (
+                  <div>
+                    <p className="text-gray-500 text-sm mb-1">Invoice Number</p>
+                    <p className="font-medium">{invoiceNumber}</p>
+                  </div>
+                )}
+                {customerName && (
+                  <div>
+                    <p className="text-gray-500 text-sm mb-1">Customer Name</p>
+                    <p className="font-medium">{customerName}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
           {updateError && (
             <div className="text-center p-4 border rounded-md bg-red-50 text-red-600">
               <p>There was an issue updating the transaction status: {updateError}</p>
@@ -231,6 +271,13 @@ export default function PaymentDetails() {
           </div>
           
           <div className="flex flex-wrap justify-center gap-4 pt-2">
+            {fallbackUrl && (
+              <Button variant="outline" onClick={() => window.location.href = fallbackUrl} className="flex items-center">
+                <FileText className="mr-2 h-4 w-4" />
+                View Invoice
+              </Button>
+            )}
+            
             <Button variant="outline" onClick={handlePrint} className="flex items-center">
               <Printer className="mr-2 h-4 w-4" />
               Print Receipt

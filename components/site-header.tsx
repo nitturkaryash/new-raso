@@ -8,6 +8,7 @@ import { checkAuth } from "@/lib/supabase"
 import supabaseClient from "@/lib/supabase"
 import { useToast } from "@/components/ui/use-toast"
 import { useRouter } from "next/navigation"
+import Cookies from 'js-cookie'
 
 export function SiteHeader() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -17,27 +18,46 @@ export function SiteHeader() {
 
   useEffect(() => {
     async function checkAuthStatus() {
-      const { data, error } = await checkAuth()
-      // Always set as authenticated
-      setIsAuthenticated(true)
-      setUserEmail("guest@example.com")
+      // Check for admin login in session storage
+      if (typeof window !== 'undefined') {
+        const isAdmin = sessionStorage.getItem('isAdmin')
+        const storedEmail = sessionStorage.getItem('userEmail')
+        
+        if (isAdmin === 'true') {
+          setIsAuthenticated(true)
+          setUserEmail(storedEmail || 'admin@gstco.in')
+          return
+        }
+      }
+      
+      // If no admin session, set as not authenticated
+      setIsAuthenticated(false)
+      setUserEmail(null)
     }
 
     checkAuthStatus()
-
-    // Simplified auth state change listener
-    return () => {
-      // No cleanup needed
-    }
   }, [])
 
   const handleLogout = async () => {
     try {
+      // Clear admin session if exists
+      if (typeof window !== 'undefined') {
+        // Clear session storage
+        sessionStorage.removeItem('isAdmin')
+        sessionStorage.removeItem('userEmail')
+        sessionStorage.removeItem('userName')
+        
+        // Clear the admin cookie
+        Cookies.remove('adminSession')
+      }
+      
       toast({
-        title: "Note",
-        description: "Authentication has been disabled for easier access.",
+        title: "Logged Out",
+        description: "You have been logged out successfully.",
       })
-      router.push("/services")
+      
+      // Redirect to login page
+      router.push("/login")
     } catch (error) {
       console.error("Error during logout:", error)
     }
@@ -55,12 +75,16 @@ export function SiteHeader() {
             <Link href="/" className="text-sm font-medium transition-colors hover:text-primary">
               Home
             </Link>
-            <Link href="/services" className="text-sm font-medium transition-colors hover:text-primary">
-              Items
-            </Link>
-            <Link href="/invoices" className="text-sm font-medium transition-colors hover:text-primary">
-              Invoices
-            </Link>
+            {isAuthenticated && (
+              <>
+                <Link href="/services" className="text-sm font-medium transition-colors hover:text-primary">
+                  Items
+                </Link>
+                <Link href="/invoices" className="text-sm font-medium transition-colors hover:text-primary">
+                  Invoices
+                </Link>
+              </>
+            )}
           </nav>
         </div>
         

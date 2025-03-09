@@ -5,11 +5,9 @@ import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 // This function must be named "middleware" or exported as default
 export function middleware(req: NextRequest) {
   const res = NextResponse.next();
-  const supabase = createMiddlewareClient({ req, res });
   
   // List of public routes that don't require authentication
   const publicRoutes = [
-    '/',
     '/login',
     '/api/payment-link',
     '/api/payments/razorpay',
@@ -28,63 +26,19 @@ export function middleware(req: NextRequest) {
     return res;
   }
   
-  // Check if the request is to an API route that should be protected
-  if (req.nextUrl.pathname.startsWith('/api/') && 
-      !req.nextUrl.pathname.startsWith('/api/auth/')) {
-    
-    // Get session asynchronously
-    return (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      // Try anonymous sign-in if there's no session
-      if (!session) {
-        try {
-          console.log('No session found in middleware, attempting anonymous sign-in');
-          const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously();
-          
-          if (signInError || !signInData.session) {
-            console.error('Anonymous sign-in failed:', signInError);
-            return NextResponse.json(
-              { error: 'Unauthorized', message: 'Authentication failed' },
-              { status: 401 }
-            );
-          }
-          
-          console.log('Anonymous sign-in successful');
-          // Continue with the request since we now have a session
-          return res;
-        } catch (error) {
-          console.error('Error during anonymous sign-in:', error);
-          return NextResponse.json(
-            { error: 'Unauthorized', message: 'Authentication error' },
-            { status: 401 }
-          );
-        }
-      }
-      
-      return res;
-    })();
-  }
-
-  // Add security headers but be more permissive
-  const cspHeader = `
-    default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;
-    script-src * 'unsafe-inline' 'unsafe-eval';
-    style-src * 'unsafe-inline';
-    img-src * data: blob:;
-    font-src * data:;
-    connect-src *;
-    frame-src *;
-    object-src 'none';
-  `.replace(/\s+/g, ' ').trim();
-
-  // Set security headers
-  res.headers.set('Content-Security-Policy', cspHeader);
+  // For protected routes, check for admin session in cookies
+  const sessionCookie = req.cookies.get('adminSession');
   
-  // Add other security headers
-  res.headers.set('X-Frame-Options', 'DENY');
-  res.headers.set('X-Content-Type-Options', 'nosniff');
-  res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // If there's no session cookie and it's not a public route, redirect to login
+  if (!sessionCookie) {
+    // Redirect to login page
+    const url = new URL('/login', req.url);
+    
+    // Add a redirect param to go back to the original page after login
+    url.searchParams.set('redirect', req.nextUrl.pathname);
+    
+    return NextResponse.redirect(url);
+  }
   
   return res;
 }

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTransaction } from '@/lib/supabase';
+import Razorpay from 'razorpay';
+
+// Mark this route as dynamic to prevent static generation errors
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   console.log("Payment status check API called");

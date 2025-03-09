@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { CreditCard } from 'lucide-react'
 import { type Transaction } from '@/lib/supabase'
-import { toast } from '@/components/ui/use-toast'
+import { useToast } from '@/components/ui/use-toast'
 
 interface RazorpayPaymentProps {
   orderData: any
@@ -25,6 +25,7 @@ export default function RazorpayPayment({
   onSuccess,
   onCancel
 }: RazorpayPaymentProps) {
+  const { toast } = useToast()
   const [isLoaded, setIsLoaded] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   
@@ -34,23 +35,52 @@ export default function RazorpayPayment({
   
   useEffect(() => {
     // Load Razorpay script
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return
+
+    const loadRazorpay = async () => {
       if (window.Razorpay) {
         setIsLoaded(true)
         return
       }
       
-      const script = document.createElement('script')
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-      script.async = true
-      script.onload = () => {
-        console.log('Razorpay script loaded successfully')
-        setIsLoaded(true)
+      try {
+        const script = document.createElement('script')
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+        script.async = true
+        
+        script.onload = () => {
+          console.log('Razorpay script loaded successfully')
+          setIsLoaded(true)
+        }
+        
+        script.onerror = (error) => {
+          console.error('Failed to load Razorpay script:', error)
+          toast({
+            title: "Payment Error",
+            description: "Failed to load payment gateway. Please try again later.",
+            variant: "destructive",
+          })
+        }
+        
+        document.body.appendChild(script)
+      } catch (error) {
+        console.error('Error loading Razorpay script:', error)
+        toast({
+          title: "Payment Error",
+          description: "Failed to initialize payment gateway. Please try again later.",
+          variant: "destructive",
+        })
       }
-      script.onerror = (error) => {
-        console.error('Failed to load Razorpay script:', error)
+    }
+
+    loadRazorpay()
+
+    // Cleanup
+    return () => {
+      const script = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]')
+      if (script) {
+        document.body.removeChild(script)
       }
-      document.body.appendChild(script)
     }
   }, [])
   
@@ -105,16 +135,25 @@ export default function RazorpayPayment({
     
     if (!razorpayKeyId) {
       console.error('Razorpay key is missing')
+      toast({
+        title: "Payment Error",
+        description: "Payment configuration is incomplete. Please contact support.",
+        variant: "destructive",
+      })
       setIsProcessing(false)
       return
     }
     
     try {
-      // Extract the order ID correctly from the response
       const orderId = orderData.orderId || (orderData.id ? orderData.id : null)
       
       if (!orderId) {
         console.error('Order ID is missing from order data', orderData)
+        toast({
+          title: "Payment Error",
+          description: "Invalid order details. Please try again later.",
+          variant: "destructive",
+        })
         setIsProcessing(false)
         return
       }
@@ -206,6 +245,11 @@ export default function RazorpayPayment({
       razorpay.open()
     } catch (error) {
       console.error('Error initializing Razorpay:', error)
+      toast({
+        title: "Payment Error",
+        description: "Failed to initialize payment. Please try again later.",
+        variant: "destructive",
+      })
       setIsProcessing(false)
     }
   }

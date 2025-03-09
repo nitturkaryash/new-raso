@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import supabaseServer from '@/lib/supabase-server';
 import { Service } from '@/types/service';
 
+// Mark this route as dynamic to prevent static generation errors
+export const dynamic = 'force-dynamic';
+
 // Get all services
 export async function GET(request: NextRequest) {
   try {
